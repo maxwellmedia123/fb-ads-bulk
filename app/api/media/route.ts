@@ -72,12 +72,15 @@ export async function POST(request: NextRequest) {
     const name = formData.get("name") as string;
     const tagsString = formData.get("tags") as string;
 
-    if (!file || !accountId || !name) {
+    if (!file || !accountId) {
       return NextResponse.json(
-        { error: "File, account ID, and name are required" },
+        { error: "File and account ID are required" },
         { status: 400 }
       );
     }
+
+    // Use filename as name if not provided
+    const finalName = name || file.name.replace(/\.[^/.]+$/, "");
 
     // Verify account exists
     const account = await prisma.adAccount.findUnique({
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
     const mediaAsset = await prisma.mediaAsset.create({
       data: {
         adAccountId: accountId,
-        name,
+        name: finalName,
         tags,
         type,
         r2Key,
