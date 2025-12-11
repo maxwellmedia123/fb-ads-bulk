@@ -52,6 +52,21 @@ interface InstagramAccount {
   pictureUrl?: string;
 }
 
+// Page to Instagram account pairings
+const PAGE_IG_PAIRINGS: Record<string, string> = {
+  // EP pairings
+  "Joel Robison Photography": "joelrobison",
+  "Expert Photography": "expertphotography",
+  "Fotografie Iwona Podlasinska": "iwonapodlasinka",
+  // FF pairings
+  "FamilyFriends": "realfamilyfriends",
+};
+
+// Default page/IG for accounts (by account name pattern)
+const DEFAULT_SELECTIONS: Record<string, { page: string; ig: string }> = {
+  "FF": { page: "FamilyFriends", ig: "realfamilyfriends" },
+};
+
 const CTA_OPTIONS = [
   { value: "LEARN_MORE", label: "Learn More" },
   { value: "SHOP_NOW", label: "Shop Now" },
@@ -78,6 +93,10 @@ export default function LaunchPage() {
   const [adSetSearch, setAdSetSearch] = useState("");
   const [isRefreshingAdSets, setIsRefreshingAdSets] = useState(false);
 
+  // Media search and view
+  const [mediaSearch, setMediaSearch] = useState("");
+  const [mediaViewMode, setMediaViewMode] = useState<"grid" | "list">("grid");
+
   // Selections
   const [selectedAdSets, setSelectedAdSets] = useState<string[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
@@ -85,7 +104,6 @@ export default function LaunchPage() {
   const [selectedIg, setSelectedIg] = useState("");
 
   // Ad Copy
-  const [customName, setCustomName] = useState("");
   const [primaryText, setPrimaryText] = useState("");
   const [headline, setHeadline] = useState("");
   const [description, setDescription] = useState("");
@@ -104,7 +122,19 @@ export default function LaunchPage() {
     total: number;
     success: number;
     failed: number;
+    results?: Array<{
+      adSetId: string;
+      adSetName?: string;
+      success: boolean;
+      adId?: string;
+      error?: string;
+    }>;
   } | null>(null);
+  const [showDeleteAdsModal, setShowDeleteAdsModal] = useState(false);
+  const [adSetToDeleteFrom, setAdSetToDeleteFrom] = useState<string | null>(null);
+  const [adsInAdSet, setAdsInAdSet] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [isDeletingAds, setIsDeletingAds] = useState(false);
+  const [selectedAdsToDelete, setSelectedAdsToDelete] = useState<string[]>([]);
 
   useEffect(() => {
     if (activeAccount) {
@@ -144,8 +174,30 @@ export default function LaunchPage() {
         setPages(data.pages || []);
         setIgAccounts(data.instagramAccounts || []);
 
-        // Auto-select first page
-        if (data.pages?.length > 0) {
+        // Check for default selections based on account name
+        const accountName = activeAccount?.name || "";
+        let defaultSet = false;
+
+        for (const [pattern, defaults] of Object.entries(DEFAULT_SELECTIONS)) {
+          if (accountName.includes(pattern)) {
+            const defaultPage = data.pages?.find((p: Page) => p.name === defaults.page);
+            const defaultIg = data.instagramAccounts?.find((ig: InstagramAccount) =>
+              ig.username.toLowerCase() === defaults.ig.toLowerCase()
+            );
+
+            if (defaultPage) {
+              setSelectedPage(defaultPage.fbPageId);
+              defaultSet = true;
+            }
+            if (defaultIg) {
+              setSelectedIg(defaultIg.igAccountId);
+            }
+            break;
+          }
+        }
+
+        // Auto-select first page if no default
+        if (!defaultSet && data.pages?.length > 0) {
           setSelectedPage(data.pages[0].fbPageId);
         }
       }
@@ -165,6 +217,30 @@ export default function LaunchPage() {
     setCallToAction(template.callToAction);
     setShowTemplateModal(false);
   };
+
+  // Handle page selection with paired Instagram
+  const handlePageSelect = (pageId: string) => {
+    setSelectedPage(pageId);
+
+    // Find the page and check for paired Instagram
+    const page = pages.find((p) => p.fbPageId === pageId);
+    if (page) {
+      const pairedIgUsername = PAGE_IG_PAIRINGS[page.name];
+      if (pairedIgUsername) {
+        const pairedIg = igAccounts.find(
+          (ig) => ig.username.toLowerCase() === pairedIgUsername.toLowerCase()
+        );
+        if (pairedIg) {
+          setSelectedIg(pairedIg.igAccountId);
+        }
+      }
+    }
+  };
+
+  // Filter media by search
+  const filteredMedia = media.filter((item) =>
+    item.name.toLowerCase().includes(mediaSearch.toLowerCase())
+  );
 
   const refreshAdSets = async () => {
     if (!activeAccount) return;
@@ -237,7 +313,6 @@ export default function LaunchPage() {
           mediaAssetIds: selectedMedia,
           pageId: selectedPage,
           instagramAccountId: selectedIg || undefined,
-          customName,
           primaryText,
           headline,
           description,
@@ -254,7 +329,10 @@ export default function LaunchPage() {
         throw new Error(data.error || "Launch failed");
       }
 
-      setResult(data.summary);
+      setResult({
+        ...data.summary,
+        results: data.results,
+      });
 
       // Clear selections on success
       if (data.summary.success > 0) {
@@ -265,6 +343,60 @@ export default function LaunchPage() {
       setError(err instanceof Error ? err.message : "Launch failed");
     } finally {
       setIsLaunching(false);
+    }
+  };
+
+  // Fetch ads in an ad set for deletion
+  const fetchAdsInAdSet = async (adSetId: string) => {
+    if (!activeAccount) return;
+
+    try {
+      const response = await fetch(
+        `/api/launch/ads-in-adset?accountId=${activeAccount.id}&adSetId=${adSetId}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setAdsInAdSet(data.ads || []);
+      }
+    } catch (err) {
+      console.error("Error fetching ads:", err);
+    }
+  };
+
+  // Handle opening delete modal for a specific ad set
+  const handleOpenDeleteModal = async (adSetId: string) => {
+    setAdSetToDeleteFrom(adSetId);
+    setSelectedAdsToDelete([]);
+    setShowDeleteAdsModal(true);
+    await fetchAdsInAdSet(adSetId);
+  };
+
+  // Delete selected ads
+  const handleDeleteAds = async () => {
+    if (!activeAccount || selectedAdsToDelete.length === 0) return;
+
+    setIsDeletingAds(true);
+    try {
+      const response = await fetch("/api/launch/delete-ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: activeAccount.id,
+          adIds: selectedAdsToDelete,
+        }),
+      });
+
+      if (response.ok) {
+        // Refresh the list
+        if (adSetToDeleteFrom) {
+          await fetchAdsInAdSet(adSetToDeleteFrom);
+        }
+        setSelectedAdsToDelete([]);
+      }
+    } catch (err) {
+      console.error("Error deleting ads:", err);
+    } finally {
+      setIsDeletingAds(false);
     }
   };
 
@@ -331,12 +463,50 @@ export default function LaunchPage() {
             Launched {result.success} of {result.total} ads
             {result.failed > 0 && ` (${result.failed} failed)`}
           </p>
+
+          {/* Show detailed errors */}
+          {result.results && result.results.some((r) => !r.success) && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm font-medium text-gray-700">Failed ad sets:</p>
+              {result.results
+                .filter((r) => !r.success)
+                .map((r) => (
+                  <div
+                    key={r.adSetId}
+                    className="flex items-center justify-between p-2 bg-white rounded border text-sm"
+                  >
+                    <div>
+                      <span className="text-gray-700">Ad Set ID: {r.adSetId}</span>
+                      {r.error && (
+                        <p className="text-red-600 text-xs mt-1">{r.error}</p>
+                      )}
+                    </div>
+                    {r.error?.toLowerCase().includes("limit") ||
+                    r.error?.toLowerCase().includes("too many") ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleOpenDeleteModal(r.adSetId)}
+                      >
+                        Delete Ads
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       )}
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-          {error}
+          <p className="font-medium">{error}</p>
+          {error.toLowerCase().includes("limit") ||
+          error.toLowerCase().includes("too many") ? (
+            <p className="text-sm mt-2">
+              Try deleting some existing ads from the ad set to make room.
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -547,7 +717,7 @@ export default function LaunchPage() {
                         name="facebookPage"
                         value={page.fbPageId}
                         checked={selectedPage === page.fbPageId}
-                        onChange={(e) => setSelectedPage(e.target.value)}
+                        onChange={(e) => handlePageSelect(e.target.value)}
                         className="sr-only"
                       />
                       {page.pictureUrl ? (
@@ -563,9 +733,16 @@ export default function LaunchPage() {
                           </svg>
                         </div>
                       )}
-                      <span className="text-sm font-medium text-gray-900">{page.name}</span>
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-900">{page.name}</span>
+                        {PAGE_IG_PAIRINGS[page.name] && (
+                          <span className="ml-2 text-xs text-pink-600">
+                            paired with @{PAGE_IG_PAIRINGS[page.name]}
+                          </span>
+                        )}
+                      </div>
                       {selectedPage === page.fbPageId && (
-                        <svg className="w-5 h-5 text-blue-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       )}
@@ -577,7 +754,7 @@ export default function LaunchPage() {
               {/* Instagram Account Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Instagram Account (optional)
+                  Instagram Account {selectedPage && PAGE_IG_PAIRINGS[pages.find(p => p.fbPageId === selectedPage)?.name || ""] ? "(auto-paired)" : "(optional)"}
                 </label>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   <label
@@ -670,13 +847,6 @@ export default function LaunchPage() {
               }
             />
             <div className="space-y-4">
-              <Input
-                label="Ad Name (optional)"
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="Custom ad name"
-              />
-
               <Textarea
                 label="Primary Text"
                 value={primaryText}
@@ -760,34 +930,91 @@ export default function LaunchPage() {
         title="Select Media"
         size="xl"
       >
-        <div className="grid grid-cols-4 gap-3 max-h-96 overflow-y-auto">
-          {media.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => {
-                if (selectedMedia.includes(item.id)) {
-                  setSelectedMedia(selectedMedia.filter((i) => i !== item.id));
-                } else {
-                  setSelectedMedia([...selectedMedia, item.id]);
-                }
-              }}
-              className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
-                selectedMedia.includes(item.id)
-                  ? "border-blue-500"
-                  : "border-transparent hover:border-gray-300"
-              }`}
+        {/* Search and View Toggle */}
+        <div className="flex gap-3 mb-4">
+          <div className="flex-1">
+            <Input
+              placeholder="Search media..."
+              value={mediaSearch}
+              onChange={(e) => setMediaSearch(e.target.value)}
+            />
+          </div>
+          <div className="flex border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setMediaViewMode("grid")}
+              className={`p-2 ${mediaViewMode === "grid" ? "bg-blue-100 text-blue-600" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              title="Grid view"
             >
-              <div className="aspect-square bg-gray-100">
-                {item.type === "IMAGE" ? (
-                  <img
-                    src={item.r2Url}
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setMediaViewMode("list")}
+              className={`p-2 ${mediaViewMode === "list" ? "bg-blue-100 text-blue-600" : "bg-white text-gray-500 hover:bg-gray-50"}`}
+              title="List view"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Grid View */}
+        {mediaViewMode === "grid" ? (
+          <div className="grid grid-cols-4 gap-3 max-h-96 overflow-y-auto">
+            {filteredMedia.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => {
+                  if (selectedMedia.includes(item.id)) {
+                    setSelectedMedia(selectedMedia.filter((i) => i !== item.id));
+                  } else {
+                    setSelectedMedia([...selectedMedia, item.id]);
+                  }
+                }}
+                className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                  selectedMedia.includes(item.id)
+                    ? "border-blue-500"
+                    : "border-transparent hover:border-gray-300"
+                }`}
+              >
+                <div className="aspect-square bg-gray-100">
+                  {item.type === "IMAGE" ? (
+                    <img
+                      src={item.r2Url}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-purple-50">
+                      <svg
+                        className="w-8 h-8 text-purple-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                {selectedMedia.includes(item.id) && (
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
                     <svg
-                      className="w-8 h-8 text-gray-400"
+                      className="w-4 h-4 text-white"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -796,34 +1023,73 @@ export default function LaunchPage() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                        d="M5 13l4 4L19 7"
                       />
                     </svg>
                   </div>
                 )}
+                <p className="p-2 text-xs truncate">{item.name}</p>
               </div>
-              {selectedMedia.includes(item.id) && (
-                <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                  <svg
-                    className="w-4 h-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
+            ))}
+          </div>
+        ) : (
+          /* List View */
+          <div className="max-h-96 overflow-y-auto space-y-2">
+            {filteredMedia.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => {
+                  if (selectedMedia.includes(item.id)) {
+                    setSelectedMedia(selectedMedia.filter((i) => i !== item.id));
+                  } else {
+                    setSelectedMedia([...selectedMedia, item.id]);
+                  }
+                }}
+                className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-all ${
+                  selectedMedia.includes(item.id)
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden flex-shrink-0">
+                  {item.type === "IMAGE" ? (
+                    <img
+                      src={item.r2Url}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
                     />
-                  </svg>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-purple-50">
+                      <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
-              )}
-              <p className="p-2 text-xs truncate">{item.name}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex justify-end">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                  <p className="text-xs text-gray-500">{item.type}</p>
+                </div>
+                {selectedMedia.includes(item.id) && (
+                  <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {filteredMedia.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            {mediaSearch ? "No media matches your search" : "No media uploaded yet"}
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-between items-center">
+          <span className="text-sm text-gray-500">
+            {selectedMedia.length} selected
+          </span>
           <Button onClick={() => setShowMediaModal(false)}>Done</Button>
         </div>
       </Modal>
@@ -851,6 +1117,96 @@ export default function LaunchPage() {
               </p>
             </div>
           ))}
+        </div>
+      </Modal>
+
+      {/* Delete Ads Modal */}
+      <Modal
+        isOpen={showDeleteAdsModal}
+        onClose={() => {
+          setShowDeleteAdsModal(false);
+          setAdSetToDeleteFrom(null);
+          setAdsInAdSet([]);
+          setSelectedAdsToDelete([]);
+        }}
+        title="Delete Ads from Ad Set"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Select ads to delete from this ad set to make room for new ones.
+          </p>
+
+          {adsInAdSet.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              Loading ads...
+            </div>
+          ) : (
+            <div className="max-h-96 overflow-y-auto space-y-2">
+              {adsInAdSet.map((ad) => (
+                <label
+                  key={ad.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    selectedAdsToDelete.includes(ad.id)
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedAdsToDelete.includes(ad.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedAdsToDelete([...selectedAdsToDelete, ad.id]);
+                      } else {
+                        setSelectedAdsToDelete(
+                          selectedAdsToDelete.filter((id) => id !== ad.id)
+                        );
+                      }
+                    }}
+                    className="w-4 h-4 text-red-600 rounded"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {ad.name}
+                    </p>
+                    <p className="text-xs text-gray-500">ID: {ad.id}</p>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 text-xs rounded ${
+                      ad.status === "ACTIVE"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {ad.status}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-between items-center pt-4 border-t">
+            <span className="text-sm text-gray-500">
+              {selectedAdsToDelete.length} selected
+            </span>
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setShowDeleteAdsModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteAds}
+                isLoading={isDeletingAds}
+                disabled={selectedAdsToDelete.length === 0}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Delete Selected
+              </Button>
+            </div>
+          </div>
         </div>
       </Modal>
     </div>
