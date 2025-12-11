@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { uploadToR2, generateMediaKey, deleteFromR2 } from "@/lib/r2";
+import { uploadToR2, generateMediaKey, deleteFromR2, getPresignedUrl } from "@/lib/r2";
+
+// Public R2 URL for serving media
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
 
 // GET - Fetch media assets for the active account
 export async function GET(request: NextRequest) {
@@ -47,7 +50,31 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ media });
+    // Generate fresh URLs for each media item
+    const mediaWithUrls = await Promise.all(
+      media.map(async (item) => {
+        let url = item.r2Url;
+
+        // If we have a public URL configured, use it
+        if (R2_PUBLIC_URL) {
+          url = `${R2_PUBLIC_URL}/${item.r2Key}`;
+        } else {
+          // Otherwise generate a fresh presigned URL
+          try {
+            url = await getPresignedUrl(item.r2Key);
+          } catch (err) {
+            console.error(`Error getting presigned URL for ${item.r2Key}:`, err);
+          }
+        }
+
+        return {
+          ...item,
+          r2Url: url,
+        };
+      })
+    );
+
+    return NextResponse.json({ media: mediaWithUrls });
   } catch (error) {
     console.error("Error fetching media:", error);
     return NextResponse.json(

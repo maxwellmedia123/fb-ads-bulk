@@ -65,6 +65,7 @@ const PAGE_IG_PAIRINGS: Record<string, string> = {
 // Default page/IG for accounts (by account name pattern)
 const DEFAULT_SELECTIONS: Record<string, { page: string; ig: string }> = {
   "FF": { page: "FamilyFriends", ig: "realfamilyfriends" },
+  "EP": { page: "Expert Photography", ig: "expertphotography" },
 };
 
 const CTA_OPTIONS = [
