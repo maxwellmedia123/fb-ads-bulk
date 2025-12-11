@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAccount } from "@/lib/context/AccountContext";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -16,7 +16,7 @@ interface AccountDetails {
   instagramAccounts?: { id: string; igAccountId: string; username: string }[];
 }
 
-export default function AccountsPage() {
+function AccountsContent() {
   const searchParams = useSearchParams();
   const { refreshAccounts } = useAccount();
   const [accounts, setAccounts] = useState<AccountDetails[]>([]);
@@ -250,5 +250,13 @@ export default function AccountsPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+export default function AccountsPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-12 text-gray-500">Loading...</div>}>
+      <AccountsContent />
+    </Suspense>
   );
 }
