@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+model AdAccount {
+  id                String   @id @default(cuid())
+  fbAccountId       String   @unique
+  name              String
+  businessManagerId String?
+  accessToken       String   @db.Text
+  tokenExpiresAt    DateTime?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  copyTemplates     CopyTemplate[]
+  mediaAssets       MediaAsset[]
+  launchedAds       LaunchedAd[]
+  facebookPages     FacebookPage[]
+  instagramAccounts InstagramAccount[]
+}
+
+model FacebookPage {
+  id          String    @id @default(cuid())
+  fbPageId    String
+  name        String
+  accessToken String?   @db.Text
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([fbPageId, adAccountId])
+}
+
+model InstagramAccount {
+  id          String    @id @default(cuid())
+  igAccountId String
+  username    String
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([igAccountId, adAccountId])
+}
+
+model CopyTemplate {
+  id          String    @id @default(cuid())
+  name        String
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  // Primary content - up to 5 variations
+  primaryText1 String  @db.Text
+  primaryText2 String? @db.Text
+  primaryText3 String? @db.Text
+  primaryText4 String? @db.Text
+  primaryText5 String? @db.Text
+
+  // Headlines - up to 5 variations
+  headline1 String
+  headline2 String?
+  headline3 String?
+  headline4 String?
+  headline5 String?
+
+  // Other fields
+  description    String? @db.Text
+  link           String
+  displayLink    String?
+  utmParameters  String? @db.Text
+  callToAction   String  @default("LEARN_MORE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MediaAsset {
+  id          String    @id @default(cuid())
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  // Our reference for searching
+  name String
+  tags String[]
+  type MediaType
+
+  // Storage in R2
+  r2Key String
+  r2Url String @db.Text
+
+  // Facebook reference (populated after uploading to FB)
+  fbImageHash String?
+  fbVideoId   String?
+
+  // Metadata
+  thumbnailUrl  String? @db.Text
+  width         Int?
+  height        Int?
+  fileSizeBytes Int?
+  mimeType      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model LaunchedAd {
+  id          String    @id @default(cuid())
+  adAccountId String
+  adAccount   AdAccount @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+
+  // Facebook IDs
+  fbAdId       String?
+  fbAdSetId    String
+  fbAdSetName  String?
+  fbCampaignId String?
+
+  // Ad details (snapshot at launch time)
+  customName   String?
+  primaryText  String  @db.Text
+  headline     String
+  description  String?
+  link         String
+  displayLink  String?
+  callToAction String
+
+  // Media used
+  mediaAssetIds String[]
+  isCarousel    Boolean  @default(false)
+
+  // Page/IG selection
+  fbPageId   String?
+  igAccountId String?
+
+  // Status
+  status       AdStatus @default(PENDING)
+  launchPaused Boolean  @default(false)
+  launchedAt   DateTime?
+  errorMessage String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AdStatus {
+  PENDING
+  LAUNCHED
+  FAILED
+  PAUSED
+}
