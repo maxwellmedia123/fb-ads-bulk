@@ -55,14 +55,14 @@ const COLUMN_MAPPING: Record<string, string> = {
 };
 
 export function parseCSV(csvContent: string): CSVAdRow[] {
-  const result = Papa.parse(csvContent, {
+  const result = Papa.parse<Record<string, string>>(csvContent, {
     header: true,
     skipEmptyLines: true,
   });
 
   const rows: CSVAdRow[] = [];
 
-  result.data.forEach((rawRow: Record<string, string>, index: number) => {
+  result.data.forEach((rawRow, index) => {
     const row = normalizeRow(rawRow);
     const parsedRow = parseRow(row, index);
     rows.push(parsedRow);
