@@ -29,11 +29,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
-    const adSets = await fetchAdSets(
+    const rawAdSets = await fetchAdSets(
       account.fbAccountId,
       account.accessToken,
       ["ACTIVE", "PAUSED"]
     );
+
+    // Transform to include spend_7d
+    const adSets = rawAdSets.map((adSet) => ({
+      id: adSet.id,
+      name: adSet.name,
+      status: adSet.status,
+      campaign: adSet.campaign,
+      created_time: adSet.created_time,
+      spend_7d: adSet.insights?.data?.[0]?.spend
+        ? parseFloat(adSet.insights.data[0].spend)
+        : 0,
+    }));
 
     return NextResponse.json({ adSets });
   } catch (error) {

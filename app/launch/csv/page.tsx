@@ -6,6 +6,14 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 
+interface CarouselCard {
+  mediaUrl?: string;
+  portraitMediaUrl?: string;
+  title?: string;
+  description?: string;
+  link?: string;
+}
+
 interface CSVAdRow {
   rowIndex: number;
   rowType: "Single" | "Carousel";
@@ -20,6 +28,7 @@ interface CSVAdRow {
   launchPaused: boolean;
   videoUrls?: string[];
   adSetIds: string[];
+  carouselCards?: CarouselCard[];
   isValid: boolean;
   errors: string[];
   warnings: string[];
@@ -239,9 +248,11 @@ Single,my_ad_name,"This is the primary ad text...",Main Headline,Optional descri
       {/* Rows Table */}
       {rows.length > 0 && (
         <Card padding="none">
-          <CardHeader
-            title={`Preview (${rows.length} ads)`}
-            action={
+          <div className="p-6 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Preview ({rows.length} ads)</h3>
+              </div>
               <div className="flex gap-3">
                 <Button
                   variant="secondary"
@@ -259,31 +270,40 @@ Single,my_ad_name,"This is the primary ad text...",Main Headline,Optional descri
                   Launch {validation?.validCount || 0} Ads
                 </Button>
               </div>
-            }
-          />
+            </div>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="min-w-max w-full text-sm">
               <thead className="bg-gray-50 border-y">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     #
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
+                    Media
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     Name
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     Type
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
+                    Primary Text
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     Headline
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
+                    Link
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     Ad Sets
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 whitespace-nowrap">
                     Issues
                   </th>
                 </tr>
@@ -296,10 +316,10 @@ Single,my_ad_name,"This is the primary ad text...",Main Headline,Optional descri
                       !row.isValid ? "bg-red-50" : row.warnings.length > 0 ? "bg-yellow-50" : ""
                     }`}
                   >
-                    <td className="px-4 py-3 text-gray-600">
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {row.rowIndex + 1}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {row.isValid ? (
                         row.warnings.length > 0 ? (
                           <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
@@ -316,19 +336,114 @@ Single,my_ad_name,"This is the primary ad text...",Main Headline,Optional descri
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 max-w-xs truncate">
+                    <td className="px-4 py-3">
+                      {/* Media Preview */}
+                      <div className="flex gap-1">
+                        {row.videoUrls && row.videoUrls.length > 0 ? (
+                          row.videoUrls.slice(0, 3).map((url, idx) => (
+                            <div
+                              key={idx}
+                              className="w-20 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0"
+                            >
+                              {url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                <img
+                                  src={url}
+                                  alt={`Media ${idx + 1}`}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <video
+                                  src={url}
+                                  className="w-full h-full object-cover"
+                                  muted
+                                  onError={(e) => {
+                                    (e.target as HTMLVideoElement).style.display = 'none';
+                                  }}
+                                />
+                              )}
+                            </div>
+                          ))
+                        ) : row.carouselCards && row.carouselCards.length > 0 ? (
+                          row.carouselCards.slice(0, 3).map((card, idx) => (
+                            <div
+                              key={idx}
+                              className="w-20 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0"
+                            >
+                              {card.mediaUrl && (
+                                card.mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                  <img
+                                    src={card.mediaUrl}
+                                    alt={`Card ${idx + 1}`}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <video
+                                    src={card.mediaUrl}
+                                    className="w-full h-full object-cover"
+                                    muted
+                                    onError={(e) => {
+                                      (e.target as HTMLVideoElement).style.display = 'none';
+                                    }}
+                                  />
+                                )
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="w-20 h-20 bg-gray-100 rounded flex items-center justify-center text-gray-400">
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        {((row.videoUrls && row.videoUrls.length > 3) || (row.carouselCards && row.carouselCards.length > 3)) && (
+                          <div className="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-gray-600 text-sm font-medium flex-shrink-0">
+                            +{Math.max((row.videoUrls?.length || 0), (row.carouselCards?.length || 0)) - 3}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap max-w-[200px] truncate">
                       {row.customName || "-"}
                     </td>
-                    <td className="px-4 py-3">{row.rowType}</td>
-                    <td className="px-4 py-3 max-w-xs truncate">
-                      {row.headlineVariations[0] || "-"}
+                    <td className="px-4 py-3 whitespace-nowrap">{row.rowType}</td>
+                    <td className="px-4 py-3 max-w-[250px]">
+                      <div className="truncate" title={row.primaryTextVariations[0]}>
+                        {row.primaryTextVariations[0] || "-"}
+                      </div>
+                      {row.primaryTextVariations.length > 1 && (
+                        <span className="text-xs text-gray-500">
+                          +{row.primaryTextVariations.length - 1} variation(s)
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 max-w-[200px]">
+                      <div className="truncate" title={row.headlineVariations[0]}>
+                        {row.headlineVariations[0] || "-"}
+                      </div>
+                      {row.headlineVariations.length > 1 && (
+                        <span className="text-xs text-gray-500">
+                          +{row.headlineVariations.length - 1} variation(s)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 max-w-[200px]">
+                      <div className="truncate text-blue-600" title={row.link}>
+                        {row.link || "-"}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {row.adSetIds.length > 0
                         ? `${row.adSetIds.length} ad set(s)`
                         : "-"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 min-w-[200px]">
                       {row.errors.length > 0 && (
                         <div className="text-red-600 text-xs">
                           {row.errors.join(", ")}

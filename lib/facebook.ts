@@ -19,11 +19,17 @@ export interface FacebookPage {
   id: string;
   name: string;
   access_token?: string;
+  picture?: {
+    data: {
+      url: string;
+    };
+  };
 }
 
 export interface InstagramAccount {
   id: string;
   username: string;
+  profile_picture_url?: string;
 }
 
 export interface FacebookAdSet {
@@ -33,6 +39,12 @@ export interface FacebookAdSet {
   campaign: {
     id: string;
     name: string;
+  };
+  created_time?: string;
+  insights?: {
+    data: Array<{
+      spend: string;
+    }>;
   };
 }
 
@@ -96,13 +108,13 @@ export async function fetchPages(
 ): Promise<FacebookPage[]> {
   // First get pages for the ad account
   const response = await fetch(
-    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/promote_pages?fields=id,name,access_token&access_token=${accessToken}`
+    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/promote_pages?fields=id,name,access_token,picture{url}&access_token=${accessToken}`
   );
 
   if (!response.ok) {
     // Fallback to user's pages
     const userPagesResponse = await fetch(
-      `${FACEBOOK_GRAPH_URL}/me/accounts?fields=id,name,access_token&access_token=${accessToken}`
+      `${FACEBOOK_GRAPH_URL}/me/accounts?fields=id,name,access_token,picture{url}&access_token=${accessToken}`
     );
 
     if (!userPagesResponse.ok) {
@@ -126,13 +138,13 @@ export async function fetchInstagramAccounts(
   pageAccessToken: string
 ): Promise<InstagramAccount[]> {
   const response = await fetch(
-    `${FACEBOOK_GRAPH_URL}/${pageId}/instagram_accounts?fields=id,username&access_token=${pageAccessToken}`
+    `${FACEBOOK_GRAPH_URL}/${pageId}/instagram_accounts?fields=id,username,profile_picture_url&access_token=${pageAccessToken}`
   );
 
   if (!response.ok) {
     // Try the business discovery method
     const bizResponse = await fetch(
-      `${FACEBOOK_GRAPH_URL}/${pageId}?fields=instagram_business_account{id,username}&access_token=${pageAccessToken}`
+      `${FACEBOOK_GRAPH_URL}/${pageId}?fields=instagram_business_account{id,username,profile_picture_url}&access_token=${pageAccessToken}`
     );
 
     if (!bizResponse.ok) {
@@ -162,8 +174,14 @@ export async function fetchAdSets(
     ? `&filtering=[{"field":"effective_status","operator":"IN","value":${JSON.stringify(status)}}]`
     : "";
 
+  // Get date range for last 7 days
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 7);
+  const dateRange = `{'since':'${startDate.toISOString().split('T')[0]}','until':'${endDate.toISOString().split('T')[0]}'}`;
+
   const response = await fetch(
-    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adsets?fields=id,name,status,campaign{id,name}&limit=500${statusFilter}&access_token=${accessToken}`
+    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adsets?fields=id,name,status,created_time,campaign{id,name},insights.date_preset(last_7d){spend}&limit=500${statusFilter}&access_token=${accessToken}`
   );
 
   if (!response.ok) {
