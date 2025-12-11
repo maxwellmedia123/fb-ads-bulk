@@ -1,26 +1,36 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 
 interface MediaUploaderProps {
   accountId: string;
+  initialFiles?: File[];
   onUploadComplete: () => void;
   onClose: () => void;
 }
 
 export function MediaUploader({
   accountId,
+  initialFiles = [],
   onUploadComplete,
   onClose,
 }: MediaUploaderProps) {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<File[]>(initialFiles);
   const [name, setName] = useState("");
   const [tags, setTags] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Handle initial files from drag-drop on page
+  useEffect(() => {
+    if (initialFiles.length > 0) {
+      setFiles(initialFiles);
+      setName(initialFiles[0].name.replace(/\.[^/.]+$/, ""));
+    }
+  }, [initialFiles]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "@/lib/context/AccountContext";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +26,40 @@ export default function MediaPage() {
   const [typeFilter, setTypeFilter] = useState<"" | "IMAGE" | "VIDEO">("");
   const [showUploader, setShowUploader] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaAsset | null>(null);
+  const [isDraggingOnPage, setIsDraggingOnPage] = useState(false);
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
+
+  // Handle drag events on the whole page
+  const handlePageDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOnPage(true);
+  }, []);
+
+  const handlePageDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set to false if leaving the page container
+    if (e.currentTarget === e.target) {
+      setIsDraggingOnPage(false);
+    }
+  }, []);
+
+  const handlePageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOnPage(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(
+      (file) =>
+        file.type.startsWith("image/") || file.type.startsWith("video/")
+    );
+
+    if (files.length > 0) {
+      setDroppedFiles(files);
+      setShowUploader(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (activeAccount) {
@@ -91,7 +125,35 @@ export default function MediaPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6 relative min-h-[calc(100vh-200px)]"
+      onDragOver={handlePageDragOver}
+      onDragLeave={handlePageDragLeave}
+      onDrop={handlePageDrop}
+    >
+      {/* Full-page drop overlay */}
+      {isDraggingOnPage && (
+        <div className="fixed inset-0 bg-blue-500/20 z-50 flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-xl shadow-2xl p-12 text-center border-4 border-dashed border-blue-500">
+            <svg
+              className="mx-auto h-16 w-16 text-blue-500 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+            <p className="text-xl font-semibold text-gray-900">Drop files to upload</p>
+            <p className="text-gray-500 mt-2">Images and videos supported</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -239,17 +301,25 @@ export default function MediaPage() {
       {/* Upload Modal */}
       <Modal
         isOpen={showUploader}
-        onClose={() => setShowUploader(false)}
+        onClose={() => {
+          setShowUploader(false);
+          setDroppedFiles([]);
+        }}
         title="Upload Media"
         size="lg"
       >
         <MediaUploader
           accountId={activeAccount.id}
+          initialFiles={droppedFiles}
           onUploadComplete={() => {
             setShowUploader(false);
+            setDroppedFiles([]);
             fetchMedia();
           }}
-          onClose={() => setShowUploader(false)}
+          onClose={() => {
+            setShowUploader(false);
+            setDroppedFiles([]);
+          }}
         />
       </Modal>
 
