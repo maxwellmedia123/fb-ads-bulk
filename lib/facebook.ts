@@ -424,7 +424,7 @@ export function getFacebookOAuthUrl(redirectUri: string, state: string): string 
     client_id: process.env.FACEBOOK_APP_ID!,
     redirect_uri: redirectUri,
     state,
-    scope: "ads_management,ads_read,business_management,pages_read_engagement,instagram_basic",
+    scope: "ads_management,ads_read,business_management,pages_read_engagement,pages_show_list",
     response_type: "code",
   });
 
