@@ -41,7 +41,11 @@ export async function uploadToR2(
 ): Promise<UploadResult> {
   try {
     console.log(`Uploading ${key} to R2...`);
+    console.log(`   Bucket: ${R2_BUCKET}`);
+    console.log(`   Account ID: ${R2_ACCOUNT_ID}`);
     console.log(`   Size: ${Math.round(buffer.length / 1024)} KB`);
+    console.log(`   Has Access Key: ${!!R2_ACCESS_KEY_ID}`);
+    console.log(`   Has Secret Key: ${!!R2_SECRET_ACCESS_KEY}`);
 
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET,
@@ -52,18 +56,22 @@ export async function uploadToR2(
 
     await r2Client.send(command);
 
-    // Generate presigned URL for access
-    const presignedUrl = await getPresignedUrl(key);
+    // Generate public URL if R2_PUBLIC_URL is set, otherwise use presigned
+    const publicUrl = process.env.R2_PUBLIC_URL
+      ? `${process.env.R2_PUBLIC_URL}/${key}`
+      : await getPresignedUrl(key);
 
     console.log(`Uploaded to R2: ${key}`);
 
     return {
-      url: presignedUrl,
+      url: publicUrl,
       key: key,
       bucket: R2_BUCKET,
     };
   } catch (error) {
     console.error("Error uploading to R2:", error);
+    console.error("Bucket:", R2_BUCKET);
+    console.error("Account ID:", R2_ACCOUNT_ID);
     throw error;
   }
 }
