@@ -551,9 +551,11 @@ export async function createAdCreative(
 
   let responseData = await response.json();
 
-  // If Dynamic Creative error, retry with single text/headline format
-  if (!response.ok && responseData.error?.error_subcode === 1885998) {
-    console.log(`[FB Creative] Dynamic Creative not supported, falling back to single text format...`);
+  // If error when using asset_feed_spec, retry with single text/headline format
+  // Common errors: 1885998 (Dynamic Creative not supported), 2490433 (Invalid parameter)
+  const usedAssetFeedSpec = primaryTexts.length > 1 || headlines.length > 1;
+  if (!response.ok && usedAssetFeedSpec) {
+    console.log(`[FB Creative] Error with asset_feed_spec (code: ${responseData.error?.error_subcode}), falling back to single text format...`);
 
     // Rebuild with single text format
     const fallbackBody: Record<string, unknown> = {
