@@ -68,7 +68,7 @@ export function MediaUploader({
   // Threshold for multipart uploads (10MB)
   const MULTIPART_THRESHOLD = 10 * 1024 * 1024;
   // Number of concurrent chunk uploads
-  const CONCURRENT_UPLOADS = 4;
+  const CONCURRENT_UPLOADS = 8;
 
   // Track progress across all chunks
   const chunkProgressRef = { current: new Map<number, number>() };
