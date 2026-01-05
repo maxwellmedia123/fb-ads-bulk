@@ -145,9 +145,12 @@ export async function POST(request: NextRequest) {
 
         console.log(`[Launch] Creating creative with pageId: ${pageId}, instagramActorId: ${validInstagramId || 'none'}`);
 
+        // Use media filename as ad name if no custom name provided
+        const adName = customName || mediaAsset.name;
+
         const creative = await createAdCreative({
           adAccountId: account.fbAccountId,
-          name: customName || `Ad Creative ${Date.now()}`,
+          name: `${adName} - Creative`,
           pageId,
           instagramActorId: validInstagramId,
           imageHash,
@@ -164,7 +167,7 @@ export async function POST(request: NextRequest) {
         // Create ad
         const ad = await createAd({
           adAccountId: account.fbAccountId,
-          name: customName || `Ad ${Date.now()}`,
+          name: adName,
           adSetId,
           creativeId: creative.id,
           status: launchPaused ? "PAUSED" : "ACTIVE",

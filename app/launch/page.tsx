@@ -30,7 +30,15 @@ interface CopyTemplate {
   id: string;
   name: string;
   primaryText1: string;
+  primaryText2?: string;
+  primaryText3?: string;
+  primaryText4?: string;
+  primaryText5?: string;
   headline1: string;
+  headline2?: string;
+  headline3?: string;
+  headline4?: string;
+  headline5?: string;
   description?: string;
   link: string;
   displayLink?: string;
@@ -105,12 +113,13 @@ export default function LaunchPage() {
   const [selectedPage, setSelectedPage] = useState("");
   const [selectedIg, setSelectedIg] = useState("");
 
-  // Ad Copy
-  const [primaryText, setPrimaryText] = useState("");
-  const [headline, setHeadline] = useState("");
+  // Ad Copy - multiple variations
+  const [primaryTexts, setPrimaryTexts] = useState<string[]>([""]);
+  const [headlines, setHeadlines] = useState<string[]>([""]);
   const [description, setDescription] = useState("");
   const [link, setLink] = useState("");
   const [displayLink, setDisplayLink] = useState("");
+  const [utmParameters, setUtmParameters] = useState("");
   const [callToAction, setCallToAction] = useState("LEARN_MORE");
   const [launchPaused, setLaunchPaused] = useState(false);
 
@@ -217,11 +226,30 @@ export default function LaunchPage() {
   };
 
   const handleTemplateSelect = (template: CopyTemplate) => {
-    setPrimaryText(template.primaryText1);
-    setHeadline(template.headline1);
+    // Load all primary text variations
+    const texts = [
+      template.primaryText1,
+      template.primaryText2,
+      template.primaryText3,
+      template.primaryText4,
+      template.primaryText5,
+    ].filter((t): t is string => !!t && t.trim() !== "");
+    setPrimaryTexts(texts.length > 0 ? texts : [""]);
+
+    // Load all headline variations
+    const heads = [
+      template.headline1,
+      template.headline2,
+      template.headline3,
+      template.headline4,
+      template.headline5,
+    ].filter((h): h is string => !!h && h.trim() !== "");
+    setHeadlines(heads.length > 0 ? heads : [""]);
+
     setDescription(template.description || "");
     setLink(template.link);
     setDisplayLink(template.displayLink || "");
+    setUtmParameters(template.utmParameters || "");
     setCallToAction(template.callToAction);
     setShowTemplateModal(false);
   };
@@ -304,12 +332,19 @@ export default function LaunchPage() {
       return;
     }
 
-    if (!primaryText || !headline || !link) {
+    if (!primaryTexts[0] || !headlines[0] || !link) {
       setError("Please fill in primary text, headline, and link");
       return;
     }
 
     setIsLaunching(true);
+
+    // Build final link with UTM parameters
+    let finalLink = link;
+    if (utmParameters && utmParameters.trim()) {
+      const separator = link.includes("?") ? "&" : "?";
+      finalLink = `${link}${separator}${utmParameters.trim()}`;
+    }
 
     try {
       const response = await fetch("/api/launch/create", {
@@ -321,10 +356,10 @@ export default function LaunchPage() {
           mediaAssetIds: selectedMedia,
           pageId: selectedPage,
           instagramAccountId: selectedIg || undefined,
-          primaryText,
-          headline,
+          primaryText: primaryTexts[0], // Use first variation for now
+          headline: headlines[0], // Use first variation for now
           description,
-          link,
+          link: finalLink,
           displayLink,
           callToAction,
           launchPaused,
@@ -846,20 +881,102 @@ export default function LaunchPage() {
               }
             />
             <div className="space-y-4">
-              <Textarea
-                label="Primary Text"
-                value={primaryText}
-                onChange={(e) => setPrimaryText(e.target.value)}
-                placeholder="Main ad body text..."
-                rows={4}
-              />
+              {/* Primary Texts - up to 5 */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Primary Text ({primaryTexts.length}/5)
+                  </label>
+                  {primaryTexts.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setPrimaryTexts([...primaryTexts, ""])}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      + Add variation
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {primaryTexts.map((text, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Textarea
+                        value={text}
+                        onChange={(e) => {
+                          const newTexts = [...primaryTexts];
+                          newTexts[index] = e.target.value;
+                          setPrimaryTexts(newTexts);
+                        }}
+                        placeholder={`Primary text ${index + 1}...`}
+                        rows={3}
+                        className="flex-1"
+                      />
+                      {primaryTexts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newTexts = primaryTexts.filter((_, i) => i !== index);
+                            setPrimaryTexts(newTexts);
+                          }}
+                          className="text-red-500 hover:text-red-700 px-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-              <Input
-                label="Headline"
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
-                placeholder="Ad headline"
-              />
+              {/* Headlines - up to 5 */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Headline ({headlines.length}/5)
+                  </label>
+                  {headlines.length < 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setHeadlines([...headlines, ""])}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      + Add variation
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {headlines.map((text, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        value={text}
+                        onChange={(e) => {
+                          const newHeadlines = [...headlines];
+                          newHeadlines[index] = e.target.value;
+                          setHeadlines(newHeadlines);
+                        }}
+                        placeholder={`Headline ${index + 1}`}
+                        className="flex-1"
+                      />
+                      {headlines.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newHeadlines = headlines.filter((_, i) => i !== index);
+                            setHeadlines(newHeadlines);
+                          }}
+                          className="text-red-500 hover:text-red-700 px-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               <Textarea
                 label="Description (optional)"
@@ -881,6 +998,13 @@ export default function LaunchPage() {
                 value={displayLink}
                 onChange={(e) => setDisplayLink(e.target.value)}
                 placeholder="https://example.com"
+              />
+
+              <Input
+                label="URL Parameters (optional)"
+                value={utmParameters}
+                onChange={(e) => setUtmParameters(e.target.value)}
+                placeholder="utm_source=facebook&utm_medium=cpc&utm_campaign=..."
               />
 
               <Select
@@ -909,8 +1033,8 @@ export default function LaunchPage() {
             disabled={
               selectedAdSets.length === 0 ||
               selectedMedia.length === 0 ||
-              !primaryText ||
-              !headline ||
+              !primaryTexts[0] ||
+              !headlines[0] ||
               !link
             }
             className="w-full"
