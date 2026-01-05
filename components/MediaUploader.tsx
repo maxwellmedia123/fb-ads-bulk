@@ -21,6 +21,8 @@ export function MediaUploader({
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string>("");
+  const [byteProgress, setByteProgress] = useState<{ loaded: number; total: number } | null>(null);
 
   // Handle initial files from drag-drop on page
   useEffect(() => {
@@ -63,6 +65,50 @@ export function MediaUploader({
     setFiles(selectedFiles);
   };
 
+  // Upload file to R2 with progress tracking using XHR
+  const uploadToR2WithProgress = (url: string, file: File): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) {
+          setByteProgress({ loaded: event.loaded, total: event.total });
+          const percent = Math.round((event.loaded / event.total) * 100);
+          const loadedMB = (event.loaded / 1024 / 1024).toFixed(1);
+          const totalMB = (event.total / 1024 / 1024).toFixed(1);
+          setUploadStatus(`Uploading to R2: ${loadedMB}MB / ${totalMB}MB (${percent}%)`);
+          console.log(`[R2 Upload] ${loadedMB}MB / ${totalMB}MB (${percent}%)`);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log(`[R2 Upload] Complete! Status: ${xhr.status}`);
+          resolve();
+        } else {
+          console.error(`[R2 Upload] Failed! Status: ${xhr.status}, Response: ${xhr.responseText}`);
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        console.error(`[R2 Upload] Network error`);
+        reject(new Error("Network error during upload"));
+      });
+
+      xhr.addEventListener("timeout", () => {
+        console.error(`[R2 Upload] Timeout`);
+        reject(new Error("Upload timed out"));
+      });
+
+      xhr.open("PUT", url);
+      xhr.setRequestHeader("Content-Type", file.type);
+      xhr.timeout = 600000; // 10 minute timeout
+      console.log(`[R2 Upload] Starting upload of ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+      xhr.send(file);
+    });
+  };
+
   const handleUpload = async () => {
     if (files.length === 0) {
       setError("Please select at least one file");
@@ -72,13 +118,22 @@ export function MediaUploader({
     setIsUploading(true);
     setError(null);
     setUploadProgress({ current: 0, total: files.length });
+    setByteProgress(null);
 
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         setUploadProgress({ current: i + 1, total: files.length });
+        setByteProgress(null);
+
+        const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+        console.log(`\n========== Uploading file ${i + 1}/${files.length}: ${file.name} (${fileSizeMB}MB) ==========`);
 
         // Step 1: Get presigned upload URL
+        const step1Start = Date.now();
+        setUploadStatus(`Getting upload URL for ${file.name}...`);
+        console.log(`[Step 1] Getting presigned URL...`);
+
         const urlResponse = await fetch("/api/media/upload-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -96,21 +151,23 @@ export function MediaUploader({
         }
 
         const { uploadUrl, r2Key, type } = await urlResponse.json();
+        console.log(`[Step 1] Got presigned URL in ${Date.now() - step1Start}ms`);
+        console.log(`[Step 1] R2 Key: ${r2Key}`);
 
-        // Step 2: Upload directly to R2
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "PUT",
-          body: file,
-          headers: {
-            "Content-Type": file.type,
-          },
-        });
+        // Step 2: Upload directly to R2 with progress
+        const step2Start = Date.now();
+        setUploadStatus(`Uploading ${file.name} to R2...`);
+        console.log(`[Step 2] Starting R2 upload...`);
 
-        if (!uploadResponse.ok) {
-          throw new Error(`Direct upload failed for ${file.name}`);
-        }
+        await uploadToR2WithProgress(uploadUrl, file);
+
+        console.log(`[Step 2] R2 upload completed in ${Date.now() - step2Start}ms`);
 
         // Step 3: Complete upload by saving metadata
+        const step3Start = Date.now();
+        setUploadStatus(`Saving metadata for ${file.name}...`);
+        console.log(`[Step 3] Completing upload (saving metadata)...`);
+
         const completeResponse = await fetch("/api/media/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -128,14 +185,20 @@ export function MediaUploader({
           const data = await completeResponse.json();
           throw new Error(data.error || `Failed to complete upload for ${file.name}`);
         }
+
+        console.log(`[Step 3] Metadata saved in ${Date.now() - step3Start}ms`);
+        console.log(`========== File ${file.name} completed ==========\n`);
       }
 
+      setUploadStatus("All uploads complete!");
       onUploadComplete();
     } catch (err) {
+      console.error(`[Upload Error]`, err);
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
+      setByteProgress(null);
     }
   };
 
@@ -228,20 +291,42 @@ export function MediaUploader({
 
       {/* Upload Progress */}
       {uploadProgress && (
-        <div className="bg-blue-50 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
+        <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-blue-700">
-              Uploading...
-            </span>
-            <span className="text-sm text-blue-600">
-              {uploadProgress.current} / {uploadProgress.total}
+              File {uploadProgress.current} / {uploadProgress.total}
             </span>
           </div>
-          <div className="w-full bg-blue-200 rounded-full h-2">
-            <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-            />
+
+          {/* Status message */}
+          {uploadStatus && (
+            <div className="text-xs text-blue-600 font-mono bg-blue-100 p-2 rounded">
+              {uploadStatus}
+            </div>
+          )}
+
+          {/* Byte progress bar for current file */}
+          {byteProgress && (
+            <div>
+              <div className="flex justify-between text-xs text-blue-600 mb-1">
+                <span>{(byteProgress.loaded / 1024 / 1024).toFixed(1)} MB</span>
+                <span>{(byteProgress.total / 1024 / 1024).toFixed(1)} MB</span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-3">
+                <div
+                  className="bg-blue-600 h-3 rounded-full transition-all duration-150"
+                  style={{ width: `${(byteProgress.loaded / byteProgress.total) * 100}%` }}
+                />
+              </div>
+              <div className="text-center text-xs text-blue-600 mt-1">
+                {Math.round((byteProgress.loaded / byteProgress.total) * 100)}%
+              </div>
+            </div>
+          )}
+
+          {/* Overall file progress */}
+          <div className="text-xs text-gray-500">
+            Overall: {uploadProgress.current} of {uploadProgress.total} files
           </div>
         </div>
       )}
