@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         const mediaAsset = mediaAssets[0]; // Use first media for now
         let imageHash: string | undefined;
         let videoId: string | undefined;
+        let videoThumbnailUrl: string | undefined;
 
         if (mediaAsset.type === "IMAGE") {
           if (mediaAsset.fbImageHash) {
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
               account.accessToken
             );
             videoId = uploadResult.video_id;
+            videoThumbnailUrl = uploadResult.thumbnail_url;
 
             // Update media asset with FB video ID
             await prisma.mediaAsset.update({
@@ -145,6 +147,7 @@ export async function POST(request: NextRequest) {
           instagramActorId: validInstagramId,
           imageHash,
           videoId,
+          videoThumbnailUrl,
           message: primaryText,
           headline,
           description,

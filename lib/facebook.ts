@@ -255,7 +255,7 @@ export async function uploadVideo(
   adAccountId: string,
   videoUrl: string,
   accessToken: string
-): Promise<{ video_id: string }> {
+): Promise<{ video_id: string; thumbnail_url?: string }> {
   console.log(`[FB Video] Uploading video from URL: ${videoUrl.substring(0, 100)}...`);
 
   const response = await fetch(
@@ -280,7 +280,25 @@ export async function uploadVideo(
   }
 
   console.log(`[FB Video] Success - video_id: ${data.id}`);
-  return { video_id: data.id };
+
+  // Wait a moment for video processing, then get thumbnail
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Fetch video details to get thumbnail
+  const videoDetailsRes = await fetch(
+    `${FACEBOOK_GRAPH_URL}/${data.id}?fields=thumbnails&access_token=${accessToken}`
+  );
+  const videoDetails = await videoDetailsRes.json();
+
+  let thumbnailUrl: string | undefined;
+  if (videoDetails.thumbnails?.data?.[0]?.uri) {
+    thumbnailUrl = videoDetails.thumbnails.data[0].uri;
+    console.log(`[FB Video] Got thumbnail: ${thumbnailUrl}`);
+  } else {
+    console.log(`[FB Video] No thumbnail available yet`);
+  }
+
+  return { video_id: data.id, thumbnail_url: thumbnailUrl };
 }
 
 export interface CreateAdCreativeParams {
@@ -290,6 +308,7 @@ export interface CreateAdCreativeParams {
   instagramActorId?: string;
   imageHash?: string;
   videoId?: string;
+  videoThumbnailUrl?: string;
   message: string;
   headline: string;
   description?: string;
@@ -311,6 +330,7 @@ export async function createAdCreative(
     instagramActorId,
     imageHash,
     videoId,
+    videoThumbnailUrl,
     message,
     headline,
     description,
@@ -323,8 +343,10 @@ export async function createAdCreative(
     page_id: pageId,
   };
 
+  // Use instagram_user_id (new format) instead of instagram_actor_id (deprecated Jan 2026)
   if (instagramActorId) {
-    objectStorySpec.instagram_actor_id = instagramActorId;
+    console.log(`[FB Creative] Instagram ID being used: ${instagramActorId}`);
+    objectStorySpec.instagram_user_id = instagramActorId;
   }
 
   const linkData: Record<string, unknown> = {
@@ -345,7 +367,7 @@ export async function createAdCreative(
     linkData.image_hash = imageHash;
     objectStorySpec.link_data = linkData;
   } else if (videoId) {
-    objectStorySpec.video_data = {
+    const videoData: Record<string, unknown> = {
       video_id: videoId,
       message,
       link_description: description,
@@ -355,6 +377,13 @@ export async function createAdCreative(
       },
       title: headline,
     };
+
+    // Add thumbnail if available
+    if (videoThumbnailUrl) {
+      videoData.image_url = videoThumbnailUrl;
+    }
+
+    objectStorySpec.video_data = videoData;
   }
 
   const requestBody = {
