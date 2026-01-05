@@ -340,6 +340,10 @@ export default function LaunchPage() {
     setIsLaunching(true);
 
     try {
+      // Filter out empty variations
+      const validPrimaryTexts = primaryTexts.filter(t => t.trim() !== "");
+      const validHeadlines = headlines.filter(h => h.trim() !== "");
+
       const response = await fetch("/api/launch/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,12 +353,12 @@ export default function LaunchPage() {
           mediaAssetIds: selectedMedia,
           pageId: selectedPage,
           instagramAccountId: selectedIg || undefined,
-          primaryText: primaryTexts[0], // Use first variation for now
-          headline: headlines[0], // Use first variation for now
+          primaryTexts: validPrimaryTexts,
+          headlines: validHeadlines,
           description,
           link,
           displayLink,
-          urlTags: utmParameters || undefined, // Separate field for tracking params
+          urlTags: utmParameters || undefined,
           callToAction,
           launchPaused,
         }),

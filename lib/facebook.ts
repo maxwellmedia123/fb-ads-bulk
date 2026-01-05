@@ -365,8 +365,8 @@ export interface CreateAdCreativeParams {
   imageHash?: string;
   videoId?: string;
   videoThumbnailUrl?: string;
-  message: string;
-  headline: string;
+  primaryTexts: string[];
+  headlines: string[];
   description?: string;
   link: string;
   urlTags?: string;
@@ -388,14 +388,36 @@ export async function createAdCreative(
     imageHash,
     videoId,
     videoThumbnailUrl,
-    message,
-    headline,
+    primaryTexts,
+    headlines,
     description,
     link,
     urlTags,
     callToAction,
     accessToken,
   } = params;
+
+  // Build asset_feed_spec for multiple text/headline variations
+  const assetFeedSpec: Record<string, unknown> = {
+    bodies: primaryTexts.map(text => ({ text })),
+    titles: headlines.map(text => ({ text })),
+    call_to_action_types: [callToAction],
+    link_urls: [{ website_url: link }],
+    ad_formats: ["SINGLE_IMAGE"], // Will be updated below for video
+  };
+
+  if (description) {
+    assetFeedSpec.descriptions = [{ text: description }];
+  }
+
+  // Add image or video to asset feed
+  if (imageHash) {
+    assetFeedSpec.images = [{ hash: imageHash }];
+    assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
+  } else if (videoId) {
+    assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
+    assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
+  }
 
   const objectStorySpec: Record<string, unknown> = {
     page_id: pageId,
@@ -407,46 +429,10 @@ export async function createAdCreative(
     objectStorySpec.instagram_user_id = instagramActorId;
   }
 
-  const linkData: Record<string, unknown> = {
-    message,
-    link,
-    name: headline,
-    call_to_action: {
-      type: callToAction,
-      value: { link },
-    },
-  };
-
-  if (description) {
-    linkData.description = description;
-  }
-
-  if (imageHash) {
-    linkData.image_hash = imageHash;
-    objectStorySpec.link_data = linkData;
-  } else if (videoId) {
-    const videoData: Record<string, unknown> = {
-      video_id: videoId,
-      message,
-      link_description: description,
-      call_to_action: {
-        type: callToAction,
-        value: { link },
-      },
-      title: headline,
-    };
-
-    // Add thumbnail if available
-    if (videoThumbnailUrl) {
-      videoData.image_url = videoThumbnailUrl;
-    }
-
-    objectStorySpec.video_data = videoData;
-  }
-
   const requestBody: Record<string, unknown> = {
     name,
     object_story_spec: objectStorySpec,
+    asset_feed_spec: assetFeedSpec,
     access_token: accessToken,
   };
 

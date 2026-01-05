@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
       pageId,
       instagramAccountId,
       customName,
-      primaryText,
-      headline,
+      primaryTexts,
+      headlines,
       description,
       link,
       displayLink,
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!primaryText || !headline || !link) {
+    if (!primaryTexts?.length || !headlines?.length || !link) {
       return NextResponse.json(
         { error: "Missing ad copy fields" },
         { status: 400 }
@@ -157,8 +157,8 @@ export async function POST(request: NextRequest) {
           imageHash,
           videoId,
           videoThumbnailUrl,
-          message: primaryText,
-          headline,
+          primaryTexts,
+          headlines,
           description,
           link,
           urlTags,
@@ -183,8 +183,8 @@ export async function POST(request: NextRequest) {
             fbAdId: ad.id,
             fbAdSetId: adSetId,
             customName,
-            primaryText,
-            headline,
+            primaryText: primaryTexts[0],
+            headline: headlines[0],
             description,
             link,
             displayLink,
@@ -218,8 +218,8 @@ export async function POST(request: NextRequest) {
             adAccountId: accountId,
             fbAdSetId: adSetId,
             customName,
-            primaryText,
-            headline,
+            primaryText: primaryTexts[0],
+            headline: headlines[0],
             description,
             link,
             displayLink,
