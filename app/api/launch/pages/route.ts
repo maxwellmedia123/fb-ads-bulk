@@ -40,12 +40,13 @@ export async function GET(request: NextRequest) {
       pictureUrl: page.picture?.data?.url || null,
     }));
 
-    // Fetch Instagram accounts for each page
+    // Fetch Instagram accounts for each page - track which page they belong to
     const instagramAccounts: Array<{
       id: string;
       igAccountId: string;
       username: string;
       pictureUrl: string | null;
+      connectedPageId: string; // The Facebook Page this IG account is connected to
     }> = [];
 
     for (const page of fbPages) {
@@ -53,12 +54,16 @@ export async function GET(request: NextRequest) {
         try {
           const igAccounts = await fetchInstagramAccounts(page.id, page.access_token);
           for (const ig of igAccounts) {
-            instagramAccounts.push({
-              id: ig.id,
-              igAccountId: ig.id,
-              username: ig.username,
-              pictureUrl: ig.profile_picture_url || null,
-            });
+            // Only add if not already in list (avoid duplicates)
+            if (!instagramAccounts.find(existing => existing.igAccountId === ig.id)) {
+              instagramAccounts.push({
+                id: ig.id,
+                igAccountId: ig.id,
+                username: ig.username,
+                pictureUrl: ig.profile_picture_url || null,
+                connectedPageId: page.id, // Track which page this IG is connected to
+              });
+            }
           }
         } catch (err) {
           console.error(`Error fetching IG for page ${page.id}:`, err);

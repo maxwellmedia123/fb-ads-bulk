@@ -50,6 +50,7 @@ interface InstagramAccount {
   igAccountId: string;
   username: string;
   pictureUrl?: string;
+  connectedPageId: string; // The Facebook Page this IG is connected to
 }
 
 // Page to Instagram account pairings
@@ -172,34 +173,40 @@ export default function LaunchPage() {
 
       if (pagesRes.ok) {
         const data = await pagesRes.json();
-        setPages(data.pages || []);
-        setIgAccounts(data.instagramAccounts || []);
+        const loadedPages = data.pages || [];
+        const loadedIgAccounts = data.instagramAccounts || [];
+        setPages(loadedPages);
+        setIgAccounts(loadedIgAccounts);
 
-        // Check for default selections based on account name
+        // Check for default page selection based on account name
         const accountName = activeAccount?.name || "";
-        let defaultSet = false;
+        let selectedPageId = "";
 
         for (const [pattern, defaults] of Object.entries(DEFAULT_SELECTIONS)) {
           if (accountName.includes(pattern)) {
-            const defaultPage = data.pages?.find((p: Page) => p.name === defaults.page);
-            const defaultIg = data.instagramAccounts?.find((ig: InstagramAccount) =>
-              ig.username.toLowerCase() === defaults.ig.toLowerCase()
-            );
-
+            const defaultPage = loadedPages.find((p: Page) => p.name === defaults.page);
             if (defaultPage) {
-              setSelectedPage(defaultPage.fbPageId);
-              defaultSet = true;
+              selectedPageId = defaultPage.fbPageId;
+              break;
             }
-            if (defaultIg) {
-              setSelectedIg(defaultIg.igAccountId);
-            }
-            break;
           }
         }
 
         // Auto-select first page if no default
-        if (!defaultSet && data.pages?.length > 0) {
-          setSelectedPage(data.pages[0].fbPageId);
+        if (!selectedPageId && loadedPages.length > 0) {
+          selectedPageId = loadedPages[0].fbPageId;
+        }
+
+        if (selectedPageId) {
+          setSelectedPage(selectedPageId);
+
+          // Auto-select Instagram connected to this page
+          const connectedIg = loadedIgAccounts.find(
+            (ig: InstagramAccount) => ig.connectedPageId === selectedPageId
+          );
+          if (connectedIg) {
+            setSelectedIg(connectedIg.igAccountId);
+          }
         }
       }
     } catch (err) {
@@ -219,24 +226,24 @@ export default function LaunchPage() {
     setShowTemplateModal(false);
   };
 
-  // Handle page selection with paired Instagram
+  // Handle page selection - auto-select connected Instagram
   const handlePageSelect = (pageId: string) => {
     setSelectedPage(pageId);
 
-    // Find the page and check for paired Instagram
-    const page = pages.find((p) => p.fbPageId === pageId);
-    if (page) {
-      const pairedIgUsername = PAGE_IG_PAIRINGS[page.name];
-      if (pairedIgUsername) {
-        const pairedIg = igAccounts.find(
-          (ig) => ig.username.toLowerCase() === pairedIgUsername.toLowerCase()
-        );
-        if (pairedIg) {
-          setSelectedIg(pairedIg.igAccountId);
-        }
-      }
+    // Find the Instagram account connected to this page
+    const connectedIg = igAccounts.find((ig) => ig.connectedPageId === pageId);
+    if (connectedIg) {
+      setSelectedIg(connectedIg.igAccountId);
+    } else {
+      // No Instagram connected to this page
+      setSelectedIg("");
     }
   };
+
+  // Filter Instagram accounts to only show the one connected to selected page
+  const availableIgAccounts = igAccounts.filter(
+    (ig) => ig.connectedPageId === selectedPage
+  );
 
   // Filter media by search
   const filteredMedia = media.filter((item) =>
@@ -746,7 +753,7 @@ export default function LaunchPage() {
               {/* Instagram Account Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Instagram Account {selectedPage && PAGE_IG_PAIRINGS[pages.find(p => p.fbPageId === selectedPage)?.name || ""] ? "(auto-paired)" : "(optional)"}
+                  Instagram Account {availableIgAccounts.length > 0 ? "(connected to selected page)" : "(none connected to this page)"}
                 </label>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   <label
@@ -769,14 +776,14 @@ export default function LaunchPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </div>
-                    <span className="text-sm text-gray-600">None</span>
+                    <span className="text-sm text-gray-600">None (Facebook only)</span>
                     {selectedIg === "" && (
                       <svg className="w-5 h-5 text-blue-500 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                   </label>
-                  {igAccounts.map((ig) => (
+                  {availableIgAccounts.map((ig) => (
                     <label
                       key={ig.igAccountId}
                       className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
