@@ -4,6 +4,10 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
   DeleteObjectsCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -251,6 +255,86 @@ export async function deleteFromR2(keys: string[]): Promise<number> {
     throw error;
   }
 }
+
+// ============== MULTIPART UPLOAD FUNCTIONS ==============
+
+/**
+ * Initiate a multipart upload
+ * @returns uploadId needed for subsequent part uploads
+ */
+export async function initiateMultipartUpload(
+  key: string,
+  contentType: string
+): Promise<string> {
+  const command = new CreateMultipartUploadCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  const response = await r2Client.send(command);
+  if (!response.UploadId) {
+    throw new Error("Failed to initiate multipart upload");
+  }
+  return response.UploadId;
+}
+
+/**
+ * Get a presigned URL for uploading a specific part
+ */
+export async function getPresignedPartUrl(
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresIn: number = 3600
+): Promise<string> {
+  const command = new UploadPartCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    PartNumber: partNumber,
+  });
+
+  return getSignedUrl(r2Client, command, { expiresIn });
+}
+
+/**
+ * Complete a multipart upload
+ */
+export async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: { ETag: string; PartNumber: number }[]
+): Promise<void> {
+  const command = new CompleteMultipartUploadCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    MultipartUpload: {
+      Parts: parts.sort((a, b) => a.PartNumber - b.PartNumber),
+    },
+  });
+
+  await r2Client.send(command);
+}
+
+/**
+ * Abort a multipart upload (cleanup on failure)
+ */
+export async function abortMultipartUpload(
+  key: string,
+  uploadId: string
+): Promise<void> {
+  const command = new AbortMultipartUploadCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+  });
+
+  await r2Client.send(command);
+}
+
+// ============== HELPER FUNCTIONS ==============
 
 /**
  * Slugify a string for use in file paths

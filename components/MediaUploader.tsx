@@ -65,48 +65,224 @@ export function MediaUploader({
     setFiles(selectedFiles);
   };
 
-  // Upload file to R2 with progress tracking using XHR
-  const uploadToR2WithProgress = (url: string, file: File): Promise<void> => {
+  // Threshold for multipart uploads (10MB)
+  const MULTIPART_THRESHOLD = 10 * 1024 * 1024;
+  // Number of concurrent chunk uploads
+  const CONCURRENT_UPLOADS = 4;
+
+  // Track progress across all chunks
+  const chunkProgressRef = { current: new Map<number, number>() };
+
+  // Upload a single chunk and return ETag
+  const uploadChunk = (
+    url: string,
+    chunk: Blob,
+    partNumber: number,
+    totalSize: number
+  ): Promise<string> => {
     return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) {
+          chunkProgressRef.current.set(partNumber, event.loaded);
+
+          // Sum all chunk progress
+          let totalLoaded = 0;
+          chunkProgressRef.current.forEach((loaded) => {
+            totalLoaded += loaded;
+          });
+
+          setByteProgress({ loaded: totalLoaded, total: totalSize });
+          const percent = Math.round((totalLoaded / totalSize) * 100);
+          const loadedMB = (totalLoaded / 1024 / 1024).toFixed(1);
+          const totalMB = (totalSize / 1024 / 1024).toFixed(1);
+          setUploadStatus(`Uploading: ${loadedMB}MB / ${totalMB}MB (${percent}%) - ${CONCURRENT_UPLOADS} parallel streams`);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // Get ETag from response headers (needed for completing multipart upload)
+          const etag = xhr.getResponseHeader("ETag");
+          console.log(`[Chunk ${partNumber}] Complete! ETag: ${etag}`);
+          resolve(etag || "");
+        } else {
+          console.error(`[Chunk ${partNumber}] Failed! Status: ${xhr.status}`);
+          reject(new Error(`Chunk ${partNumber} failed with status ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        console.error(`[Chunk ${partNumber}] Network error`);
+        reject(new Error(`Network error uploading chunk ${partNumber}`));
+      });
+
+      xhr.addEventListener("timeout", () => {
+        console.error(`[Chunk ${partNumber}] Timeout`);
+        reject(new Error(`Chunk ${partNumber} timed out`));
+      });
+
+      xhr.open("PUT", url);
+      xhr.timeout = 300000; // 5 minute timeout per chunk
+      xhr.send(chunk);
+    });
+  };
+
+  // Upload file using multipart (chunked, parallel)
+  const uploadMultipart = async (file: File, accountId: string): Promise<void> => {
+    console.log(`[Multipart] Starting multipart upload for ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+
+    // Reset chunk progress tracking
+    chunkProgressRef.current.clear();
+
+    // Step 1: Start multipart upload
+    setUploadStatus(`Starting multipart upload for ${file.name}...`);
+    const startResponse = await fetch("/api/media/multipart/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+      }),
+    });
+
+    if (!startResponse.ok) {
+      const data = await startResponse.json();
+      throw new Error(data.error || "Failed to start multipart upload");
+    }
+
+    const { uploadId, r2Key, type, partUrls, chunkSize } = await startResponse.json();
+    console.log(`[Multipart] Got ${partUrls.length} part URLs, chunk size: ${chunkSize / 1024 / 1024}MB`);
+
+    // Step 2: Upload chunks in parallel
+    const parts: { ETag: string; PartNumber: number }[] = [];
+    const uploadQueue = [...partUrls];
+    const inProgress: Promise<void>[] = [];
+
+    const processChunk = async (partInfo: { partNumber: number; url: string }) => {
+      const start = (partInfo.partNumber - 1) * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+
+      console.log(`[Multipart] Uploading part ${partInfo.partNumber} (${(chunk.size / 1024 / 1024).toFixed(1)}MB)`);
+
+      const etag = await uploadChunk(partInfo.url, chunk, partInfo.partNumber, file.size);
+      parts.push({ ETag: etag, PartNumber: partInfo.partNumber });
+    };
+
+    // Process chunks with concurrency limit
+    while (uploadQueue.length > 0 || inProgress.length > 0) {
+      // Start new uploads up to concurrency limit
+      while (inProgress.length < CONCURRENT_UPLOADS && uploadQueue.length > 0) {
+        const partInfo = uploadQueue.shift()!;
+        const promise = processChunk(partInfo).then(() => {
+          const index = inProgress.indexOf(promise);
+          if (index > -1) inProgress.splice(index, 1);
+        });
+        inProgress.push(promise);
+      }
+
+      // Wait for at least one to complete
+      if (inProgress.length > 0) {
+        await Promise.race(inProgress);
+      }
+    }
+
+    console.log(`[Multipart] All ${parts.length} parts uploaded`);
+
+    // Step 3: Complete multipart upload
+    setUploadStatus(`Completing upload for ${file.name}...`);
+    const completeResponse = await fetch("/api/media/multipart/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        r2Key,
+        uploadId,
+        parts,
+        name: getNameFromFile(file),
+        type,
+        contentType: file.type,
+        fileSize: file.size,
+      }),
+    });
+
+    if (!completeResponse.ok) {
+      const data = await completeResponse.json();
+      throw new Error(data.error || "Failed to complete multipart upload");
+    }
+
+    console.log(`[Multipart] Upload complete!`);
+  };
+
+  // Upload small file directly (single PUT)
+  const uploadDirect = async (file: File, accountId: string): Promise<void> => {
+    // Get presigned upload URL
+    const urlResponse = await fetch("/api/media/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+      }),
+    });
+
+    if (!urlResponse.ok) {
+      const data = await urlResponse.json();
+      throw new Error(data.error || `Failed to get upload URL for ${file.name}`);
+    }
+
+    const { uploadUrl, r2Key, type } = await urlResponse.json();
+
+    // Upload directly
+    await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
 
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
           setByteProgress({ loaded: event.loaded, total: event.total });
           const percent = Math.round((event.loaded / event.total) * 100);
-          const loadedMB = (event.loaded / 1024 / 1024).toFixed(1);
-          const totalMB = (event.total / 1024 / 1024).toFixed(1);
-          setUploadStatus(`Uploading to R2: ${loadedMB}MB / ${totalMB}MB (${percent}%)`);
-          console.log(`[R2 Upload] ${loadedMB}MB / ${totalMB}MB (${percent}%)`);
+          setUploadStatus(`Uploading: ${(event.loaded / 1024 / 1024).toFixed(1)}MB / ${(event.total / 1024 / 1024).toFixed(1)}MB (${percent}%)`);
         }
       });
 
       xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log(`[R2 Upload] Complete! Status: ${xhr.status}`);
-          resolve();
-        } else {
-          console.error(`[R2 Upload] Failed! Status: ${xhr.status}, Response: ${xhr.responseText}`);
-          reject(new Error(`Upload failed with status ${xhr.status}`));
-        }
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload failed with status ${xhr.status}`));
       });
 
-      xhr.addEventListener("error", () => {
-        console.error(`[R2 Upload] Network error`);
-        reject(new Error("Network error during upload"));
-      });
+      xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+      xhr.addEventListener("timeout", () => reject(new Error("Upload timed out")));
 
-      xhr.addEventListener("timeout", () => {
-        console.error(`[R2 Upload] Timeout`);
-        reject(new Error("Upload timed out"));
-      });
-
-      xhr.open("PUT", url);
+      xhr.open("PUT", uploadUrl);
       xhr.setRequestHeader("Content-Type", file.type);
-      xhr.timeout = 600000; // 10 minute timeout
-      console.log(`[R2 Upload] Starting upload of ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+      xhr.timeout = 600000;
       xhr.send(file);
     });
+
+    // Complete upload
+    const completeResponse = await fetch("/api/media/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        r2Key,
+        name: getNameFromFile(file),
+        type,
+        contentType: file.type,
+        fileSize: file.size,
+      }),
+    });
+
+    if (!completeResponse.ok) {
+      const data = await completeResponse.json();
+      throw new Error(data.error || `Failed to complete upload for ${file.name}`);
+    }
   };
 
   const handleUpload = async () => {
@@ -127,67 +303,25 @@ export function MediaUploader({
         setByteProgress(null);
 
         const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+        const useMultipart = file.size > MULTIPART_THRESHOLD;
+
         console.log(`\n========== Uploading file ${i + 1}/${files.length}: ${file.name} (${fileSizeMB}MB) ==========`);
+        console.log(`Using ${useMultipart ? "MULTIPART" : "DIRECT"} upload`);
 
-        // Step 1: Get presigned upload URL
-        const step1Start = Date.now();
-        setUploadStatus(`Getting upload URL for ${file.name}...`);
-        console.log(`[Step 1] Getting presigned URL...`);
+        const startTime = Date.now();
 
-        const urlResponse = await fetch("/api/media/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            accountId,
-            fileName: file.name,
-            contentType: file.type,
-            fileSize: file.size,
-          }),
-        });
-
-        if (!urlResponse.ok) {
-          const data = await urlResponse.json();
-          throw new Error(data.error || `Failed to get upload URL for ${file.name}`);
+        if (useMultipart) {
+          // Large file: use multipart upload with parallel chunks
+          await uploadMultipart(file, accountId);
+        } else {
+          // Small file: direct upload
+          setUploadStatus(`Uploading ${file.name}...`);
+          await uploadDirect(file, accountId);
         }
 
-        const { uploadUrl, r2Key, type } = await urlResponse.json();
-        console.log(`[Step 1] Got presigned URL in ${Date.now() - step1Start}ms`);
-        console.log(`[Step 1] R2 Key: ${r2Key}`);
-
-        // Step 2: Upload directly to R2 with progress
-        const step2Start = Date.now();
-        setUploadStatus(`Uploading ${file.name} to R2...`);
-        console.log(`[Step 2] Starting R2 upload...`);
-
-        await uploadToR2WithProgress(uploadUrl, file);
-
-        console.log(`[Step 2] R2 upload completed in ${Date.now() - step2Start}ms`);
-
-        // Step 3: Complete upload by saving metadata
-        const step3Start = Date.now();
-        setUploadStatus(`Saving metadata for ${file.name}...`);
-        console.log(`[Step 3] Completing upload (saving metadata)...`);
-
-        const completeResponse = await fetch("/api/media/complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            accountId,
-            r2Key,
-            name: getNameFromFile(file),
-            type,
-            contentType: file.type,
-            fileSize: file.size,
-          }),
-        });
-
-        if (!completeResponse.ok) {
-          const data = await completeResponse.json();
-          throw new Error(data.error || `Failed to complete upload for ${file.name}`);
-        }
-
-        console.log(`[Step 3] Metadata saved in ${Date.now() - step3Start}ms`);
-        console.log(`========== File ${file.name} completed ==========\n`);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        const speed = (file.size / 1024 / 1024 / parseFloat(duration)).toFixed(1);
+        console.log(`========== File ${file.name} completed in ${duration}s (${speed} MB/s) ==========\n`);
       }
 
       setUploadStatus("All uploads complete!");
