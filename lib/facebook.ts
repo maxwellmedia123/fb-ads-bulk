@@ -449,9 +449,26 @@ export async function createAdCreative(
     accessToken,
   } = params;
 
-  // Use first text/headline (asset_feed_spec requires Dynamic Creative ad sets)
-  const message = primaryTexts[0];
-  const headline = headlines[0];
+  // Build asset_feed_spec for multiple text/headline variations
+  const assetFeedSpec: Record<string, unknown> = {
+    bodies: primaryTexts.map((text) => ({ text })),
+    titles: headlines.map((text) => ({ text })),
+    call_to_action_types: [callToAction],
+    link_urls: [{ website_url: link }],
+    ad_formats: imageHash ? ["SINGLE_IMAGE"] : ["SINGLE_VIDEO"],
+  };
+
+  if (description) {
+    assetFeedSpec.descriptions = [{ text: description }];
+  }
+
+  if (imageHash) {
+    assetFeedSpec.images = [{ hash: imageHash }];
+  } else if (videoId) {
+    assetFeedSpec.videos = [
+      { video_id: videoId, thumbnail_url: videoThumbnailUrl },
+    ];
+  }
 
   const objectStorySpec: Record<string, unknown> = {
     page_id: pageId,
@@ -463,60 +480,27 @@ export async function createAdCreative(
     objectStorySpec.instagram_user_id = instagramActorId;
   }
 
-  // Build link_data or video_data based on media type
-  if (imageHash) {
-    objectStorySpec.link_data = {
-      message,
-      link,
-      name: headline,
-      description,
-      image_hash: imageHash,
-      call_to_action: {
-        type: callToAction,
-        value: { link },
-      },
-    };
-  } else if (videoId) {
-    objectStorySpec.video_data = {
-      video_id: videoId,
-      message,
-      title: headline,
-      link_description: description,
-      image_url: videoThumbnailUrl,
-      call_to_action: {
-        type: callToAction,
-        value: { link },
-      },
-    };
-  }
-
   const requestBody: Record<string, unknown> = {
     name,
     object_story_spec: objectStorySpec,
+    asset_feed_spec: assetFeedSpec,
     access_token: accessToken,
-    // Enable text optimization features (allows Facebook to swap text between locations)
-    degrees_of_freedom_spec: {
-      creative_features_spec: {
-        standard_enhancements: {
-          enroll_status: "OPT_IN",
-        },
-      },
-    },
   };
-
-  // Note: Multiple text/headline variations (asset_feed_spec with bodies/titles arrays)
-  // requires Dynamic Creative enabled at the ad set level in Facebook.
-  // For regular ad sets, we use single text with text optimization enabled above.
 
   // Add URL tags for tracking (goes in Facebook's URL Parameters section)
   if (urlTags) {
     requestBody.url_tags = urlTags;
   }
 
-  console.log(`[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`);
-  console.log(`[FB Creative] Request body:`, JSON.stringify(requestBody, null, 2));
+  console.log(
+    `[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`
+  );
+  console.log(
+    `[FB Creative] Request body:`,
+    JSON.stringify(requestBody, null, 2)
+  );
 
-  const response = await fetch(
+  let response = await fetch(
     `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
     {
       method: "POST",
@@ -527,11 +511,89 @@ export async function createAdCreative(
     }
   );
 
-  const responseData = await response.json();
+  let responseData = await response.json();
 
+  // If asset_feed_spec fails, fall back to single text format
   if (!response.ok) {
-    console.error(`[FB Creative] Error response:`, JSON.stringify(responseData, null, 2));
-    throw new Error(responseData.error?.message || "Failed to create ad creative");
+    console.log(
+      `[FB Creative] Error with asset_feed_spec (code: ${responseData.error?.error_subcode}), trying fallback...`
+    );
+
+    // Build fallback with link_data/video_data using only first text/headline
+    const fallbackObjectStorySpec: Record<string, unknown> = {
+      page_id: pageId,
+    };
+
+    if (instagramActorId) {
+      fallbackObjectStorySpec.instagram_user_id = instagramActorId;
+    }
+
+    if (imageHash) {
+      fallbackObjectStorySpec.link_data = {
+        message: primaryTexts[0],
+        link,
+        name: headlines[0],
+        description,
+        image_hash: imageHash,
+        call_to_action: {
+          type: callToAction,
+          value: { link },
+        },
+      };
+    } else if (videoId) {
+      fallbackObjectStorySpec.video_data = {
+        video_id: videoId,
+        message: primaryTexts[0],
+        title: headlines[0],
+        link_description: description,
+        image_url: videoThumbnailUrl,
+        call_to_action: {
+          type: callToAction,
+          value: { link },
+        },
+      };
+    }
+
+    const fallbackBody: Record<string, unknown> = {
+      name,
+      object_story_spec: fallbackObjectStorySpec,
+      access_token: accessToken,
+    };
+
+    if (urlTags) {
+      fallbackBody.url_tags = urlTags;
+    }
+
+    console.log(
+      `[FB Creative] Fallback request body:`,
+      JSON.stringify(fallbackBody, null, 2)
+    );
+
+    response = await fetch(
+      `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(fallbackBody),
+      }
+    );
+
+    responseData = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        `[FB Creative] Fallback also failed:`,
+        JSON.stringify(responseData, null, 2)
+      );
+      throw new Error(
+        responseData.error?.message || "Failed to create ad creative"
+      );
+    }
+
+    console.log(`[FB Creative] Fallback success:`, responseData);
+    return responseData;
   }
 
   console.log(`[FB Creative] Success:`, responseData);
