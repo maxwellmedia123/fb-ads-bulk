@@ -533,26 +533,33 @@ export interface CreateAdParams {
 export async function createAd(params: CreateAdParams): Promise<{ id: string }> {
   const { adAccountId, name, adSetId, creativeId, status, accessToken } = params;
 
+  const requestBody = {
+    name,
+    adset_id: adSetId,
+    creative: { creative_id: creativeId },
+    status,
+    access_token: accessToken,
+  };
+
+  console.log(`[FB Ad] Creating ad with body:`, JSON.stringify(requestBody, null, 2));
+
   const response = await fetch(`${FACEBOOK_GRAPH_URL}/act_${adAccountId}/ads`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      name,
-      adset_id: adSetId,
-      creative: { creative_id: creativeId },
-      status,
-      access_token: accessToken,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
+  const data = await response.json();
+
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to create ad");
+    console.error(`[FB Ad] Error response:`, JSON.stringify(data, null, 2));
+    throw new Error(data.error?.message || "Failed to create ad");
   }
 
-  return response.json();
+  console.log(`[FB Ad] Success:`, data);
+  return data;
 }
 
 /**
