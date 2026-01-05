@@ -646,21 +646,12 @@ export default function LaunchPage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <svg
-                            className="w-8 h-8 text-gray-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                            />
-                          </svg>
-                        </div>
+                        <video
+                          src={asset.r2Url}
+                          className="w-full h-full object-cover"
+                          preload="metadata"
+                          muted
+                        />
                       )}
                       <button
                         onClick={() =>
@@ -981,7 +972,7 @@ export default function LaunchPage() {
                     : "border-transparent hover:border-gray-300"
                 }`}
               >
-                <div className="aspect-square bg-gray-100">
+                <div className="aspect-square bg-gray-100 relative">
                   {item.type === "IMAGE" ? (
                     <img
                       src={item.r2Url}
@@ -989,27 +980,19 @@ export default function LaunchPage() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-purple-50">
-                      <svg
-                        className="w-8 h-8 text-purple-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
+                    <>
+                      <video
+                        src={item.r2Url}
+                        className="w-full h-full object-cover"
+                        preload="metadata"
+                        muted
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </>
                   )}
                 </div>
                 {selectedMedia.includes(item.id) && (
@@ -1052,7 +1035,7 @@ export default function LaunchPage() {
                     : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden flex-shrink-0">
+                <div className="w-16 h-16 bg-gray-100 rounded overflow-hidden flex-shrink-0 relative">
                   {item.type === "IMAGE" ? (
                     <img
                       src={item.r2Url}
@@ -1060,11 +1043,19 @@ export default function LaunchPage() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-purple-50">
-                      <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      </svg>
-                    </div>
+                    <>
+                      <video
+                        src={item.r2Url}
+                        className="w-full h-full object-cover"
+                        preload="metadata"
+                        muted
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
