@@ -494,41 +494,19 @@ export async function createAdCreative(
     name,
     object_story_spec: objectStorySpec,
     access_token: accessToken,
-  };
-
-  // Add additional text/headline variations if provided
-  // Uses degrees_of_freedom_spec for text optimization
-  if (primaryTexts.length > 1 || headlines.length > 1) {
-    requestBody.degrees_of_freedom_spec = {
+    // Enable text optimization features (allows Facebook to swap text between locations)
+    degrees_of_freedom_spec: {
       creative_features_spec: {
         standard_enhancements: {
           enroll_status: "OPT_IN",
         },
       },
-    };
+    },
+  };
 
-    // Add text variations as asset_feed_spec
-    // Note: This may require the ad set to support flexible/dynamic creative
-    const assetFeedSpec: Record<string, unknown> = {
-      bodies: primaryTexts.map(text => ({ text })),
-      titles: headlines.map(text => ({ text })),
-      descriptions: description ? [{ text: description }] : [],
-      call_to_action_types: [callToAction],
-      link_urls: [{ website_url: link }],
-    };
-
-    if (imageHash) {
-      assetFeedSpec.images = [{ hash: imageHash }];
-      assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
-    } else if (videoId) {
-      assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
-      assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
-    }
-
-    requestBody.asset_feed_spec = assetFeedSpec;
-    // Remove object_story_spec when using asset_feed_spec
-    delete requestBody.object_story_spec;
-  }
+  // Note: Multiple text/headline variations (asset_feed_spec with bodies/titles arrays)
+  // requires Dynamic Creative enabled at the ad set level in Facebook.
+  // For regular ad sets, we use single text with text optimization enabled above.
 
   // Add URL tags for tracking (goes in Facebook's URL Parameters section)
   if (urlTags) {
@@ -538,7 +516,7 @@ export async function createAdCreative(
   console.log(`[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`);
   console.log(`[FB Creative] Request body:`, JSON.stringify(requestBody, null, 2));
 
-  let response = await fetch(
+  const response = await fetch(
     `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
     {
       method: "POST",
@@ -549,40 +527,7 @@ export async function createAdCreative(
     }
   );
 
-  let responseData = await response.json();
-
-  // If error when using asset_feed_spec, retry with single text/headline format
-  // Common errors: 1885998 (Dynamic Creative not supported), 2490433 (Invalid parameter)
-  const usedAssetFeedSpec = primaryTexts.length > 1 || headlines.length > 1;
-  if (!response.ok && usedAssetFeedSpec) {
-    console.log(`[FB Creative] Error with asset_feed_spec (code: ${responseData.error?.error_subcode}), falling back to single text format...`);
-
-    // Rebuild with single text format
-    const fallbackBody: Record<string, unknown> = {
-      name,
-      object_story_spec: objectStorySpec,
-      access_token: accessToken,
-    };
-
-    if (urlTags) {
-      fallbackBody.url_tags = urlTags;
-    }
-
-    console.log(`[FB Creative] Retry with fallback body:`, JSON.stringify(fallbackBody, null, 2));
-
-    response = await fetch(
-      `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(fallbackBody),
-      }
-    );
-
-    responseData = await response.json();
-  }
+  const responseData = await response.json();
 
   if (!response.ok) {
     console.error(`[FB Creative] Error response:`, JSON.stringify(responseData, null, 2));
