@@ -256,6 +256,8 @@ export async function uploadVideo(
   videoUrl: string,
   accessToken: string
 ): Promise<{ video_id: string }> {
+  console.log(`[FB Video] Uploading video from URL: ${videoUrl.substring(0, 100)}...`);
+
   const response = await fetch(
     `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/advideos`,
     {
@@ -270,12 +272,14 @@ export async function uploadVideo(
     }
   );
 
+  const data = await response.json();
+
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to upload video");
+    console.error(`[FB Video] Error:`, JSON.stringify(data, null, 2));
+    throw new Error(data.error?.message || "Failed to upload video");
   }
 
-  const data = await response.json();
+  console.log(`[FB Video] Success - video_id: ${data.id}`);
   return { video_id: data.id };
 }
 
@@ -353,6 +357,15 @@ export async function createAdCreative(
     };
   }
 
+  const requestBody = {
+    name,
+    object_story_spec: objectStorySpec,
+    access_token: accessToken,
+  };
+
+  console.log(`[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`);
+  console.log(`[FB Creative] Request body:`, JSON.stringify(requestBody, null, 2));
+
   const response = await fetch(
     `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
     {
@@ -360,20 +373,19 @@ export async function createAdCreative(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        name,
-        object_story_spec: objectStorySpec,
-        access_token: accessToken,
-      }),
+      body: JSON.stringify(requestBody),
     }
   );
 
+  const responseData = await response.json();
+
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to create ad creative");
+    console.error(`[FB Creative] Error response:`, JSON.stringify(responseData, null, 2));
+    throw new Error(responseData.error?.message || "Failed to create ad creative");
   }
 
-  return response.json();
+  console.log(`[FB Creative] Success:`, responseData);
+  return responseData;
 }
 
 export interface CreateAdParams {
