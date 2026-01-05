@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import {
   uploadImage,
   uploadVideo,
+  getVideoThumbnail,
   createAdCreative,
   createAd,
 } from "@/lib/facebook";
@@ -112,6 +113,10 @@ export async function POST(request: NextRequest) {
         } else if (mediaAsset.type === "VIDEO") {
           if (mediaAsset.fbVideoId) {
             videoId = mediaAsset.fbVideoId;
+            console.log(`[Launch] Using cached video ID: ${videoId}`);
+
+            // Fetch thumbnail for cached video
+            videoThumbnailUrl = await getVideoThumbnail(videoId, account.accessToken);
           } else {
             // Generate a fresh presigned URL for Facebook to fetch
             const presignedVideoUrl = await getPresignedUrl(mediaAsset.r2Key, 3600);

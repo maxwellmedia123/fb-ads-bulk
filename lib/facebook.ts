@@ -324,6 +324,39 @@ export async function uploadVideo(
   return { video_id: data.id, thumbnail_url: thumbnailUrl };
 }
 
+/**
+ * Get thumbnail URL for an existing video
+ */
+export async function getVideoThumbnail(
+  videoId: string,
+  accessToken: string
+): Promise<string | undefined> {
+  console.log(`[FB Video] Fetching thumbnail for video: ${videoId}`);
+
+  try {
+    const response = await fetch(
+      `${FACEBOOK_GRAPH_URL}/${videoId}?fields=thumbnails,picture&access_token=${accessToken}`
+    );
+    const data = await response.json();
+
+    if (data.thumbnails?.data?.[0]?.uri) {
+      console.log(`[FB Video] Got thumbnail from thumbnails`);
+      return data.thumbnails.data[0].uri;
+    }
+
+    if (data.picture) {
+      console.log(`[FB Video] Got thumbnail from picture`);
+      return data.picture;
+    }
+
+    console.log(`[FB Video] No thumbnail found for video`);
+    return undefined;
+  } catch (err) {
+    console.error(`[FB Video] Error fetching thumbnail:`, err);
+    return undefined;
+  }
+}
+
 export interface CreateAdCreativeParams {
   adAccountId: string;
   name: string;
