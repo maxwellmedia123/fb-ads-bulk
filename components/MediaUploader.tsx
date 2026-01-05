@@ -78,20 +78,55 @@ export function MediaUploader({
         const file = files[i];
         setUploadProgress({ current: i + 1, total: files.length });
 
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("accountId", accountId);
-        formData.append("name", getNameFromFile(file));
-        formData.append("tags", ""); // No tags
-
-        const response = await fetch("/api/media", {
+        // Step 1: Get presigned upload URL
+        const urlResponse = await fetch("/api/media/upload-url", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accountId,
+            fileName: file.name,
+            contentType: file.type,
+            fileSize: file.size,
+          }),
         });
 
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || `Upload failed for ${file.name}`);
+        if (!urlResponse.ok) {
+          const data = await urlResponse.json();
+          throw new Error(data.error || `Failed to get upload URL for ${file.name}`);
+        }
+
+        const { uploadUrl, r2Key, type } = await urlResponse.json();
+
+        // Step 2: Upload directly to R2
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "PUT",
+          body: file,
+          headers: {
+            "Content-Type": file.type,
+          },
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Direct upload failed for ${file.name}`);
+        }
+
+        // Step 3: Complete upload by saving metadata
+        const completeResponse = await fetch("/api/media/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accountId,
+            r2Key,
+            name: getNameFromFile(file),
+            type,
+            contentType: file.type,
+            fileSize: file.size,
+          }),
+        });
+
+        if (!completeResponse.ok) {
+          const data = await completeResponse.json();
+          throw new Error(data.error || `Failed to complete upload for ${file.name}`);
         }
       }
 
