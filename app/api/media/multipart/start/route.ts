@@ -38,6 +38,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for duplicate filename
+    const displayName = fileName.replace(/\.[^/.]+$/, "");
+    const existingMedia = await prisma.mediaAsset.findFirst({
+      where: {
+        adAccountId: accountId,
+        name: displayName,
+      },
+    });
+
+    if (existingMedia) {
+      return NextResponse.json(
+        { error: `File "${displayName}" already exists. Please rename the file or delete the existing one.` },
+        { status: 409 }
+      );
+    }
+
     // Determine media type
     const isVideo = contentType.startsWith("video/");
     const type = isVideo ? "VIDEO" : "IMAGE";

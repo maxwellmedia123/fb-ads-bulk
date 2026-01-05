@@ -348,16 +348,15 @@ function slugify(str: string): string {
 }
 
 /**
- * Generate a unique key for a media file
- * Structure: {brand-slug}/{images|videos}/{timestamp}-{filename}
+ * Generate a key for a media file
+ * Structure: {brand-slug}/{images|videos}/{filename}
  */
 export function generateMediaKey(
   accountName: string,
   filename: string,
   type: "images" | "videos"
 ): string {
-  const timestamp = Date.now();
   const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
   const brandSlug = slugify(accountName) || "default";
-  return `${brandSlug}/${type}/${timestamp}-${sanitizedFilename}`;
+  return `${brandSlug}/${type}/${sanitizedFilename}`;
 }
