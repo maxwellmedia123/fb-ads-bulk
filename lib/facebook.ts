@@ -449,27 +449,9 @@ export async function createAdCreative(
     accessToken,
   } = params;
 
-  // Build asset_feed_spec for multiple text/headline variations
-  const assetFeedSpec: Record<string, unknown> = {
-    bodies: primaryTexts.map(text => ({ text })),
-    titles: headlines.map(text => ({ text })),
-    call_to_action_types: [callToAction],
-    link_urls: [{ website_url: link }],
-    ad_formats: ["SINGLE_IMAGE"], // Will be updated below for video
-  };
-
-  if (description) {
-    assetFeedSpec.descriptions = [{ text: description }];
-  }
-
-  // Add image or video to asset feed
-  if (imageHash) {
-    assetFeedSpec.images = [{ hash: imageHash }];
-    assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
-  } else if (videoId) {
-    assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
-    assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
-  }
+  // Use first text/headline (asset_feed_spec requires Dynamic Creative ad sets)
+  const message = primaryTexts[0];
+  const headline = headlines[0];
 
   const objectStorySpec: Record<string, unknown> = {
     page_id: pageId,
@@ -481,10 +463,36 @@ export async function createAdCreative(
     objectStorySpec.instagram_user_id = instagramActorId;
   }
 
+  // Build link_data or video_data based on media type
+  if (imageHash) {
+    objectStorySpec.link_data = {
+      message,
+      link,
+      name: headline,
+      description,
+      image_hash: imageHash,
+      call_to_action: {
+        type: callToAction,
+        value: { link },
+      },
+    };
+  } else if (videoId) {
+    objectStorySpec.video_data = {
+      video_id: videoId,
+      message,
+      title: headline,
+      link_description: description,
+      image_url: videoThumbnailUrl,
+      call_to_action: {
+        type: callToAction,
+        value: { link },
+      },
+    };
+  }
+
   const requestBody: Record<string, unknown> = {
     name,
     object_story_spec: objectStorySpec,
-    asset_feed_spec: assetFeedSpec,
     access_token: accessToken,
   };
 
