@@ -109,9 +109,10 @@ export async function POST(request: NextRequest) {
     // Use filename as name if not provided
     const finalName = name || file.name.replace(/\.[^/.]+$/, "");
 
-    // Verify account exists
+    // Verify account exists and get name
     const account = await prisma.adAccount.findUnique({
       where: { id: accountId },
+      select: { id: true, name: true },
     });
 
     if (!account) {
@@ -125,9 +126,9 @@ export async function POST(request: NextRequest) {
     const isVideo = file.type.startsWith("video/");
     const type = isVideo ? "VIDEO" : "IMAGE";
 
-    // Generate R2 key
+    // Generate R2 key using account name for readable paths
     const r2Key = generateMediaKey(
-      accountId,
+      account.name,
       file.name,
       isVideo ? "videos" : "images"
     );

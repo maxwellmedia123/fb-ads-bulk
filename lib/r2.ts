@@ -253,14 +253,27 @@ export async function deleteFromR2(keys: string[]): Promise<number> {
 }
 
 /**
+ * Slugify a string for use in file paths
+ */
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .substring(0, 50); // Limit length
+}
+
+/**
  * Generate a unique key for a media file
+ * Structure: {brand-slug}/{images|videos}/{timestamp}-{filename}
  */
 export function generateMediaKey(
-  adAccountId: string,
+  accountName: string,
   filename: string,
   type: "images" | "videos"
 ): string {
   const timestamp = Date.now();
   const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-  return `${adAccountId}/${type}/${timestamp}-${sanitizedFilename}`;
+  const brandSlug = slugify(accountName) || "default";
+  return `${brandSlug}/${type}/${timestamp}-${sanitizedFilename}`;
 }
