@@ -281,21 +281,44 @@ export async function uploadVideo(
 
   console.log(`[FB Video] Success - video_id: ${data.id}`);
 
-  // Wait a moment for video processing, then get thumbnail
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Fetch video details to get thumbnail
-  const videoDetailsRes = await fetch(
-    `${FACEBOOK_GRAPH_URL}/${data.id}?fields=thumbnails&access_token=${accessToken}`
-  );
-  const videoDetails = await videoDetailsRes.json();
-
+  // Poll for video thumbnail (video needs time to process)
   let thumbnailUrl: string | undefined;
-  if (videoDetails.thumbnails?.data?.[0]?.uri) {
-    thumbnailUrl = videoDetails.thumbnails.data[0].uri;
-    console.log(`[FB Video] Got thumbnail: ${thumbnailUrl}`);
-  } else {
-    console.log(`[FB Video] No thumbnail available yet`);
+  const maxAttempts = 10;
+  const delayMs = 3000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[FB Video] Waiting for thumbnail (attempt ${attempt}/${maxAttempts})...`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    try {
+      // Try to get video thumbnail/picture
+      const videoDetailsRes = await fetch(
+        `${FACEBOOK_GRAPH_URL}/${data.id}?fields=thumbnails,picture&access_token=${accessToken}`
+      );
+      const videoDetails = await videoDetailsRes.json();
+
+      // Check thumbnails first
+      if (videoDetails.thumbnails?.data?.[0]?.uri) {
+        thumbnailUrl = videoDetails.thumbnails.data[0].uri;
+        console.log(`[FB Video] Got thumbnail from thumbnails: ${thumbnailUrl}`);
+        break;
+      }
+
+      // Fallback to picture field
+      if (videoDetails.picture) {
+        thumbnailUrl = videoDetails.picture;
+        console.log(`[FB Video] Got thumbnail from picture: ${thumbnailUrl}`);
+        break;
+      }
+
+      console.log(`[FB Video] Thumbnail not ready yet...`);
+    } catch (err) {
+      console.error(`[FB Video] Error fetching thumbnail:`, err);
+    }
+  }
+
+  if (!thumbnailUrl) {
+    console.log(`[FB Video] Warning: Could not get thumbnail after ${maxAttempts} attempts`);
   }
 
   return { video_id: data.id, thumbnail_url: thumbnailUrl };
