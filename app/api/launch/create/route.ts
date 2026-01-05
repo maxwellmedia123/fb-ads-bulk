@@ -7,6 +7,7 @@ import {
   createAdCreative,
   createAd,
 } from "@/lib/facebook";
+import { getPresignedUrl } from "@/lib/r2";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -91,9 +92,12 @@ export async function POST(request: NextRequest) {
           if (mediaAsset.fbImageHash) {
             imageHash = mediaAsset.fbImageHash;
           } else {
+            // Generate a fresh presigned URL for Facebook to fetch
+            const presignedImageUrl = await getPresignedUrl(mediaAsset.r2Key, 3600);
+
             const uploadResult = await uploadImage(
               account.fbAccountId,
-              mediaAsset.r2Url,
+              presignedImageUrl,
               account.accessToken
             );
             imageHash = uploadResult.hash;
@@ -108,9 +112,12 @@ export async function POST(request: NextRequest) {
           if (mediaAsset.fbVideoId) {
             videoId = mediaAsset.fbVideoId;
           } else {
+            // Generate a fresh presigned URL for Facebook to fetch
+            const presignedVideoUrl = await getPresignedUrl(mediaAsset.r2Key, 3600);
+
             const uploadResult = await uploadVideo(
               account.fbAccountId,
-              mediaAsset.r2Url,
+              presignedVideoUrl,
               account.accessToken
             );
             videoId = uploadResult.video_id;
