@@ -369,6 +369,7 @@ export interface CreateAdCreativeParams {
   headline: string;
   description?: string;
   link: string;
+  urlTags?: string;
   callToAction: string;
   accessToken: string;
 }
@@ -391,6 +392,7 @@ export async function createAdCreative(
     headline,
     description,
     link,
+    urlTags,
     callToAction,
     accessToken,
   } = params;
@@ -442,11 +444,16 @@ export async function createAdCreative(
     objectStorySpec.video_data = videoData;
   }
 
-  const requestBody = {
+  const requestBody: Record<string, unknown> = {
     name,
     object_story_spec: objectStorySpec,
     access_token: accessToken,
   };
+
+  // Add URL tags for tracking (goes in Facebook's URL Parameters section)
+  if (urlTags) {
+    requestBody.url_tags = urlTags;
+  }
 
   console.log(`[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`);
   console.log(`[FB Creative] Request body:`, JSON.stringify(requestBody, null, 2));

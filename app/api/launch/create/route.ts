@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
       description,
       link,
       displayLink,
+      urlTags,
       callToAction,
       launchPaused,
     } = body;
@@ -160,6 +161,7 @@ export async function POST(request: NextRequest) {
           headline,
           description,
           link,
+          urlTags,
           callToAction: callToAction || "LEARN_MORE",
           accessToken: pageAccessToken,
         });

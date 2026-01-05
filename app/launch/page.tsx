@@ -339,13 +339,6 @@ export default function LaunchPage() {
 
     setIsLaunching(true);
 
-    // Build final link with UTM parameters
-    let finalLink = link;
-    if (utmParameters && utmParameters.trim()) {
-      const separator = link.includes("?") ? "&" : "?";
-      finalLink = `${link}${separator}${utmParameters.trim()}`;
-    }
-
     try {
       const response = await fetch("/api/launch/create", {
         method: "POST",
@@ -359,8 +352,9 @@ export default function LaunchPage() {
           primaryText: primaryTexts[0], // Use first variation for now
           headline: headlines[0], // Use first variation for now
           description,
-          link: finalLink,
+          link,
           displayLink,
+          urlTags: utmParameters || undefined, // Separate field for tracking params
           callToAction,
           launchPaused,
         }),
