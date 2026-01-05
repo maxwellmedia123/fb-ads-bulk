@@ -357,6 +357,58 @@ export async function getVideoThumbnail(
   }
 }
 
+/**
+ * Wait for video to be ready for use in ads
+ */
+export async function waitForVideoReady(
+  videoId: string,
+  accessToken: string,
+  maxWaitMs: number = 120000
+): Promise<boolean> {
+  const startTime = Date.now();
+  const pollInterval = 5000; // 5 seconds
+
+  console.log(`[FB Video] Waiting for video ${videoId} to be ready...`);
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const response = await fetch(
+        `${FACEBOOK_GRAPH_URL}/${videoId}?fields=status&access_token=${accessToken}`
+      );
+      const data = await response.json();
+
+      console.log(`[FB Video] Status: ${JSON.stringify(data.status)}`);
+
+      // Check if video is ready
+      if (data.status?.video_status === "ready") {
+        console.log(`[FB Video] Video is ready!`);
+        return true;
+      }
+
+      // Check for processing states
+      if (data.status?.video_status === "processing" ||
+          data.status?.processing_phase?.status === "in_progress") {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`[FB Video] Still processing... (${elapsed}s elapsed)`);
+      }
+
+      // Check for error states
+      if (data.status?.video_status === "error") {
+        console.error(`[FB Video] Video processing failed`);
+        return false;
+      }
+
+    } catch (err) {
+      console.error(`[FB Video] Error checking status:`, err);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  console.log(`[FB Video] Timeout waiting for video to be ready`);
+  return false;
+}
+
 export interface CreateAdCreativeParams {
   adAccountId: string;
   name: string;

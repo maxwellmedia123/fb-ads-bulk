@@ -5,6 +5,7 @@ import {
   uploadImage,
   uploadVideo,
   getVideoThumbnail,
+  waitForVideoReady,
   createAdCreative,
   createAd,
 } from "@/lib/facebook";
@@ -135,6 +136,12 @@ export async function POST(request: NextRequest) {
               where: { id: mediaAsset.id },
               data: { fbVideoId: videoId },
             });
+          }
+
+          // Wait for video to be ready before creating ad
+          const isReady = await waitForVideoReady(videoId, account.accessToken, 120000);
+          if (!isReady) {
+            throw new Error("Video is still processing. Please try again in a few minutes.");
           }
         }
 
