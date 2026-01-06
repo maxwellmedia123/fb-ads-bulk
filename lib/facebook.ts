@@ -496,38 +496,21 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Use ACO_AUTOFLOW for multiple text variations (Advantage+ Creative Optimization)
-  // Works on standard ad sets without Dynamic Creative
+  // Use asset_variants for multiple text options (standard, non-dynamic)
+  // This bypasses the "Third Party Apps Not Supported" restriction
   if (hasMultipleTexts) {
-    console.log(`[FB Creative] Using ACO_AUTOFLOW with ${primaryTexts.length} texts, ${headlines.length} headlines`);
+    console.log(`[FB Creative] Using asset_variants with ${primaryTexts.length} texts, ${headlines.length} headlines`);
 
-    const assetFeedSpec: Record<string, unknown> = {
-      optimization_type: "ACO_AUTOFLOW",
-      bodies: primaryTexts.map((text) => ({ text })),
-      titles: headlines.map((text) => ({ text })),
-      link_urls: [{ website_url: link }],
-      call_to_action_types: [callToAction],
-    };
-
-    // Use AUTOMATIC_FORMAT to let Facebook decide the best format
-    assetFeedSpec.ad_formats = ["AUTOMATIC_FORMAT"];
-
-    if (imageHash) {
-      assetFeedSpec.images = [{ hash: imageHash }];
-    } else if (videoId) {
-      assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
-    }
-
-    if (description) {
-      assetFeedSpec.descriptions = [{ text: description }];
-    }
-
-    requestBody.asset_feed_spec = assetFeedSpec;
-    requestBody.object_story_spec = {
-      page_id: pageId,
-      ...(instagramActorId && { instagram_user_id: instagramActorId }),
-    };
-    // Note: standard_enhancements deprecated in API v22 - not included
+    requestBody.asset_variants = [
+      {
+        asset_type: "PRIMARY_TEXT",
+        values: primaryTexts,
+      },
+      {
+        asset_type: "HEADLINE",
+        values: headlines,
+      },
+    ];
   }
 
   if (urlTags) {
