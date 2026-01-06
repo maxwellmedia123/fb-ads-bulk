@@ -496,19 +496,22 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Enable text optimizations (allows Facebook to optimize text placement)
-  // Note: Multiple text variations in the UI are stored, but only first is used in the ad
-  // Facebook will optimize how/where the text is displayed
+  // Add degrees_of_freedom_spec with text_optimizations for multiple text variations
+  const creativeFeaturesSpec: Record<string, unknown> = {
+    standard_enhancements: { enroll_status: "OPT_IN" },
+  };
+
+  // Add text_optimizations with bodies/titles if we have multiple texts
   if (hasMultipleTexts) {
-    console.log(`[FB Creative] Enabling text_optimizations for ${primaryTexts.length} texts, ${headlines.length} headlines`);
-    console.log(`[FB Creative] Note: Only first text/headline used in ad, extras stored in copy template`);
+    console.log(`[FB Creative] Adding text_optimizations with ${primaryTexts.length} texts, ${headlines.length} headlines`);
+    creativeFeaturesSpec.text_optimizations = {
+      bodies: primaryTexts.map((text) => ({ text })),
+      titles: headlines.map((text) => ({ text })),
+    };
   }
 
-  // Always enable standard enhancements for better ad performance
   requestBody.degrees_of_freedom_spec = {
-    creative_features_spec: {
-      standard_enhancements: { enroll_status: "OPT_IN" },
-    },
+    creative_features_spec: creativeFeaturesSpec,
   };
 
   if (urlTags) {
