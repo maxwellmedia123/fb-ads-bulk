@@ -526,11 +526,7 @@ export async function createAdCreative(
       page_id: pageId,
       ...(instagramActorId && { instagram_user_id: instagramActorId }),
     };
-    requestBody.degrees_of_freedom_spec = {
-      creative_features_spec: {
-        standard_enhancements: { enroll_status: "OPT_IN" },
-      },
-    };
+    // Note: standard_enhancements deprecated in API v22 - not included
   }
 
   if (urlTags) {
