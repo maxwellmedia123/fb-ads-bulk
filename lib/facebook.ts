@@ -496,19 +496,13 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Enable standard enhancements for text optimization
   // Note: Multiple text variations require Dynamic Creative ad sets
   // For standard ad sets, only the first text/headline is used
+  // standard_enhancements was deprecated in API v22 (Jan 2025)
   if (hasMultipleTexts) {
     console.log(`[FB Creative] Multiple texts provided (${primaryTexts.length} texts, ${headlines.length} headlines)`);
     console.log(`[FB Creative] Using first text/headline only - enable Dynamic Creative on ad set for all variations`);
   }
-
-  requestBody.degrees_of_freedom_spec = {
-    creative_features_spec: {
-      standard_enhancements: { enroll_status: "OPT_IN" },
-    },
-  };
 
   if (urlTags) {
     requestBody.url_tags = urlTags;
