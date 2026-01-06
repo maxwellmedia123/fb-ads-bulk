@@ -451,78 +451,7 @@ export async function createAdCreative(
 
   const hasMultipleTexts = primaryTexts.length > 1 || headlines.length > 1;
 
-  // Try asset_feed_spec first if we have multiple texts (requires Dynamic Creative ad set)
-  if (hasMultipleTexts) {
-    console.log(`[FB Creative] Attempting asset_feed_spec with ${primaryTexts.length} texts, ${headlines.length} headlines`);
-
-    const assetFeedSpec: Record<string, unknown> = {
-      bodies: primaryTexts.map((text) => ({ text })),
-      titles: headlines.map((text) => ({ text })),
-      ad_formats: ["AUTOMATIC_FORMAT"],
-      call_to_action_types: [callToAction],
-      link_urls: [{ website_url: link }],
-      optimization_type: "REGULAR",
-    };
-
-    if (description) {
-      assetFeedSpec.descriptions = [{ text: description }];
-    }
-
-    if (imageHash) {
-      assetFeedSpec.images = [{ hash: imageHash }];
-    } else if (videoId) {
-      assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
-    }
-
-    const assetFeedBody: Record<string, unknown> = {
-      name,
-      asset_feed_spec: assetFeedSpec,
-      access_token: accessToken,
-    };
-
-    // Add page info for asset_feed_spec
-    assetFeedBody.object_story_spec = {
-      page_id: pageId,
-      ...(instagramActorId && { instagram_user_id: instagramActorId }),
-    };
-
-    if (urlTags) {
-      assetFeedBody.url_tags = urlTags;
-    }
-
-    console.log(`[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`);
-    console.log(`[FB Creative] asset_feed_spec body:`, JSON.stringify(assetFeedBody, null, 2));
-
-    const assetFeedResponse = await fetch(
-      `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(assetFeedBody),
-      }
-    );
-
-    const assetFeedData = await assetFeedResponse.json();
-
-    if (assetFeedResponse.ok) {
-      console.log(`[FB Creative] asset_feed_spec Success:`, assetFeedData);
-      return assetFeedData;
-    }
-
-    // Check if error is because ad set doesn't support Dynamic Creative
-    const errorCode = assetFeedData.error?.error_subcode;
-    const isDynamicCreativeError = errorCode === 1885998 || errorCode === 2490433 || errorCode === 2446803;
-
-    if (isDynamicCreativeError) {
-      console.log(`[FB Creative] Ad set doesn't support Dynamic Creative (error ${errorCode}), falling back to single text...`);
-    } else {
-      // Unknown error - throw it
-      console.error(`[FB Creative] asset_feed_spec error:`, JSON.stringify(assetFeedData, null, 2));
-      throw new Error(assetFeedData.error?.message || "Failed to create ad creative");
-    }
-  }
-
-  // Standard creative with single text (fallback or default)
+  // Build base object_story_spec (required for both standard and dynamic creatives)
   const message = primaryTexts[0];
   const headline = headlines[0];
 
@@ -567,12 +496,26 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
+  // Add multiple text variations using text_optimization_config (works on standard ad sets)
+  if (hasMultipleTexts) {
+    console.log(`[FB Creative] Adding text_optimization_config with ${primaryTexts.length} texts, ${headlines.length} headlines`);
+    requestBody.degrees_of_freedom_spec = {
+      creative_features_spec: {
+        standard_enhancements: { enroll_status: "OPT_IN" },
+      },
+      text_optimization_config: {
+        bodies: primaryTexts.map((text) => ({ text })),
+        titles: headlines.map((text) => ({ text })),
+      },
+    };
+  }
+
   if (urlTags) {
     requestBody.url_tags = urlTags;
   }
 
   console.log(`[FB Creative] Request URL: ${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`);
-  console.log(`[FB Creative] object_story_spec body:`, JSON.stringify(requestBody, null, 2));
+  console.log(`[FB Creative] Request body:`, JSON.stringify(requestBody, null, 2));
 
   const response = await fetch(
     `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adcreatives`,
