@@ -496,20 +496,19 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Use text_variation_spec for multiple text variations on standard ad sets
+  // Enable standard enhancements for text optimization
+  // Note: Multiple text variations require Dynamic Creative ad sets
+  // For standard ad sets, only the first text/headline is used
   if (hasMultipleTexts) {
-    console.log(`[FB Creative] Using text_variation_spec with ${primaryTexts.length} texts, ${headlines.length} headlines`);
-
-    requestBody.degrees_of_freedom_spec = {
-      creative_features_spec: {
-        standard_enhancements: { enroll_status: "OPT_IN" },
-        text_variation_spec: {
-          bodies: primaryTexts.map((text) => ({ text })),
-          titles: headlines.map((text) => ({ text })),
-        },
-      },
-    };
+    console.log(`[FB Creative] Multiple texts provided (${primaryTexts.length} texts, ${headlines.length} headlines)`);
+    console.log(`[FB Creative] Using first text/headline only - enable Dynamic Creative on ad set for all variations`);
   }
+
+  requestBody.degrees_of_freedom_spec = {
+    creative_features_spec: {
+      standard_enhancements: { enroll_status: "OPT_IN" },
+    },
+  };
 
   if (urlTags) {
     requestBody.url_tags = urlTags;
