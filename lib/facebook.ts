@@ -477,11 +477,6 @@ export async function createAdCreative(
     const assetFeedBody: Record<string, unknown> = {
       name,
       asset_feed_spec: assetFeedSpec,
-      degrees_of_freedom_spec: {
-        creative_features_spec: {
-          standard_enhancements: { enroll_status: "OPT_IN" },
-        },
-      },
       access_token: accessToken,
     };
 
@@ -516,7 +511,7 @@ export async function createAdCreative(
 
     // Check if error is because ad set doesn't support Dynamic Creative
     const errorCode = assetFeedData.error?.error_subcode;
-    const isDynamicCreativeError = errorCode === 1885998 || errorCode === 2490433;
+    const isDynamicCreativeError = errorCode === 1885998 || errorCode === 2490433 || errorCode === 2446803;
 
     if (isDynamicCreativeError) {
       console.log(`[FB Creative] Ad set doesn't support Dynamic Creative (error ${errorCode}), falling back to single text...`);
