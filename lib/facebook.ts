@@ -496,21 +496,21 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Use asset_variants for multiple text options (standard, non-dynamic)
-  // This bypasses the "Third Party Apps Not Supported" restriction
+  // Use text_optimizations inside standard_enhancements for multiple text options
   if (hasMultipleTexts) {
-    console.log(`[FB Creative] Using asset_variants with ${primaryTexts.length} texts, ${headlines.length} headlines`);
+    console.log(`[FB Creative] Using text_optimizations with ${primaryTexts.length} texts, ${headlines.length} headlines`);
 
-    requestBody.asset_variants = [
-      {
-        asset_type: "PRIMARY_TEXT",
-        values: primaryTexts,
+    requestBody.degrees_of_freedom_spec = {
+      creative_features_spec: {
+        standard_enhancements: {
+          enroll_status: "OPT_IN",
+          text_optimizations: {
+            bodies: primaryTexts.map((text) => ({ text })),
+            titles: headlines.map((text) => ({ text })),
+          },
+        },
       },
-      {
-        asset_type: "HEADLINE",
-        values: headlines,
-      },
-    ];
+    };
   }
 
   if (urlTags) {
