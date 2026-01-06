@@ -509,12 +509,13 @@ export async function createAdCreative(
       call_to_action_types: [callToAction],
     };
 
+    // Use AUTOMATIC_FORMAT to let Facebook decide the best format
+    assetFeedSpec.ad_formats = ["AUTOMATIC_FORMAT"];
+
     if (imageHash) {
       assetFeedSpec.images = [{ hash: imageHash }];
-      assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
     } else if (videoId) {
       assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
-      assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
     }
 
     if (description) {
