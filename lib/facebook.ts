@@ -496,37 +496,18 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Use asset_feed_spec with MULTIPLE_TEXT_OPTIMIZATION for multiple text variations
-  // This works on standard ad sets (not requiring Dynamic Creative)
+  // Use text_variation_spec for multiple text variations on standard ad sets
   if (hasMultipleTexts) {
-    console.log(`[FB Creative] Using asset_feed_spec with MULTIPLE_TEXT_OPTIMIZATION`);
-    console.log(`[FB Creative] ${primaryTexts.length} texts, ${headlines.length} headlines`);
+    console.log(`[FB Creative] Using text_variation_spec with ${primaryTexts.length} texts, ${headlines.length} headlines`);
 
-    const assetFeedSpec: Record<string, unknown> = {
-      bodies: primaryTexts.map((text) => ({ text })),
-      titles: headlines.map((text) => ({ text })),
-      call_to_action_types: [callToAction],
-      link_urls: [{ website_url: link }],
-      optimization_type: "MULTIPLE_TEXT_OPTIMIZATION",
-    };
-
-    if (imageHash) {
-      assetFeedSpec.images = [{ hash: imageHash }];
-      assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
-    } else if (videoId) {
-      assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
-      assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
-    }
-
-    if (description) {
-      assetFeedSpec.descriptions = [{ text: description }];
-    }
-
-    requestBody.asset_feed_spec = assetFeedSpec;
-    // Keep object_story_spec for page_id only
-    requestBody.object_story_spec = {
-      page_id: pageId,
-      ...(instagramActorId && { instagram_user_id: instagramActorId }),
+    requestBody.degrees_of_freedom_spec = {
+      creative_features_spec: {
+        standard_enhancements: { enroll_status: "OPT_IN" },
+        text_variation_spec: {
+          bodies: primaryTexts.map((text) => ({ text })),
+          titles: headlines.map((text) => ({ text })),
+        },
+      },
     };
   }
 
