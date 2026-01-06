@@ -8,6 +8,7 @@ import {
   waitForVideoReady,
   createAdCreative,
   createAd,
+  checkAdSetIsDynamicCreative,
 } from "@/lib/facebook";
 import { getPresignedUrl } from "@/lib/r2";
 
@@ -156,6 +157,20 @@ export async function POST(request: NextRequest) {
         // Use media filename as ad name if no custom name provided
         const adName = customName || mediaAsset.name;
 
+        // Check if ad set supports Dynamic Creative (required for multiple text variations)
+        const hasMultipleTexts = primaryTexts.length > 1 || headlines.length > 1;
+        let useDynamicCreative = false;
+
+        if (hasMultipleTexts) {
+          useDynamicCreative = await checkAdSetIsDynamicCreative(adSetId, account.accessToken);
+          if (useDynamicCreative) {
+            console.log(`[Launch] Ad set ${adSetId} supports Dynamic Creative - using asset_feed_spec for ${primaryTexts.length} texts, ${headlines.length} headlines`);
+          } else {
+            console.log(`[Launch] Ad set ${adSetId} does NOT support Dynamic Creative - using single text with AI optimization`);
+            console.log(`[Launch] Note: To use all ${primaryTexts.length} text variations, create ad set with 'Dynamic Creative' enabled`);
+          }
+        }
+
         const creative = await createAdCreative({
           adAccountId: account.fbAccountId,
           name: `${adName} - Creative`,
@@ -171,6 +186,7 @@ export async function POST(request: NextRequest) {
           urlTags,
           callToAction: callToAction || "LEARN_MORE",
           accessToken: pageAccessToken,
+          useDynamicCreative,
         });
 
         // Create ad

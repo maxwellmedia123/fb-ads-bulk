@@ -2,7 +2,7 @@
 // Note: In production, you'd use facebook-nodejs-business-sdk
 // For simplicity, we're using direct API calls with fetch
 
-const FACEBOOK_API_VERSION = "v21.0";
+const FACEBOOK_API_VERSION = "v24.0";
 const FACEBOOK_GRAPH_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
 
 export interface FacebookAdAccount {
@@ -41,6 +41,7 @@ export interface FacebookAdSet {
     name: string;
   };
   created_time?: string;
+  is_dynamic_creative?: boolean;
   insights?: {
     data: Array<{
       spend: string;
@@ -181,7 +182,7 @@ export async function fetchAdSets(
   const dateRange = `{'since':'${startDate.toISOString().split('T')[0]}','until':'${endDate.toISOString().split('T')[0]}'}`;
 
   const response = await fetch(
-    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adsets?fields=id,name,status,created_time,campaign{id,name},insights.date_preset(last_7d){spend}&limit=500${statusFilter}&access_token=${accessToken}`
+    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adsets?fields=id,name,status,created_time,is_dynamic_creative,campaign{id,name},insights.date_preset(last_7d){spend}&limit=500${statusFilter}&access_token=${accessToken}`
   );
 
   if (!response.ok) {
@@ -409,6 +410,25 @@ export async function waitForVideoReady(
   return false;
 }
 
+/**
+ * Check if an ad set supports Dynamic Creative
+ */
+export async function checkAdSetIsDynamicCreative(
+  adSetId: string,
+  accessToken: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `${FACEBOOK_GRAPH_URL}/${adSetId}?fields=is_dynamic_creative&access_token=${accessToken}`
+    );
+    const data = await response.json();
+    return data.is_dynamic_creative === true;
+  } catch (err) {
+    console.error(`[FB] Error checking ad set dynamic creative status:`, err);
+    return false;
+  }
+}
+
 export interface CreateAdCreativeParams {
   adAccountId: string;
   name: string;
@@ -424,10 +444,21 @@ export interface CreateAdCreativeParams {
   urlTags?: string;
   callToAction: string;
   accessToken: string;
+  /** If true, use asset_feed_spec for multiple text variations (requires Dynamic Creative ad set) */
+  useDynamicCreative?: boolean;
 }
 
 /**
  * Create an ad creative
+ *
+ * When useDynamicCreative is true:
+ * - Uses asset_feed_spec with multiple bodies/titles/descriptions
+ * - Requires the target ad set to have is_dynamic_creative: true
+ * - Supports up to 5 primary texts and 5 headlines
+ *
+ * When useDynamicCreative is false (default):
+ * - Uses standard object_story_spec with single text
+ * - Enables text_optimizations for Facebook AI to generate variations
  */
 export async function createAdCreative(
   params: CreateAdCreativeParams
@@ -447,67 +478,105 @@ export async function createAdCreative(
     urlTags,
     callToAction,
     accessToken,
+    useDynamicCreative = false,
   } = params;
 
   const hasMultipleTexts = primaryTexts.length > 1 || headlines.length > 1;
 
-  // Build base object_story_spec (required for both standard and dynamic creatives)
-  const message = primaryTexts[0];
-  const headline = headlines[0];
+  let requestBody: Record<string, unknown>;
 
-  const objectStorySpec: Record<string, unknown> = {
-    page_id: pageId,
-  };
+  if (useDynamicCreative && hasMultipleTexts) {
+    // DYNAMIC CREATIVE: Use asset_feed_spec for multiple text variations
+    // This requires the ad set to have is_dynamic_creative: true
+    console.log(`[FB Creative] Using DYNAMIC CREATIVE (asset_feed_spec) with ${primaryTexts.length} texts, ${headlines.length} headlines`);
 
-  if (instagramActorId) {
-    console.log(`[FB Creative] Instagram ID being used: ${instagramActorId}`);
-    objectStorySpec.instagram_user_id = instagramActorId;
-  }
-
-  if (imageHash) {
-    objectStorySpec.link_data = {
-      message,
-      link,
-      name: headline,
-      description,
-      image_hash: imageHash,
-      call_to_action: {
-        type: callToAction,
-        value: { link },
-      },
+    const objectStorySpec: Record<string, unknown> = {
+      page_id: pageId,
     };
-  } else if (videoId) {
-    objectStorySpec.video_data = {
-      video_id: videoId,
-      message,
-      title: headline,
-      link_description: description,
-      image_url: videoThumbnailUrl,
-      call_to_action: {
-        type: callToAction,
-        value: { link },
-      },
+
+    if (instagramActorId) {
+      console.log(`[FB Creative] Instagram ID being used: ${instagramActorId}`);
+      objectStorySpec.instagram_user_id = instagramActorId;
+    }
+
+    const assetFeedSpec: Record<string, unknown> = {
+      bodies: primaryTexts.map((text) => ({ text })),
+      titles: headlines.map((text) => ({ text })),
+      link_urls: [{ website_url: link }],
+      call_to_action_types: [callToAction],
     };
-  }
 
-  const requestBody: Record<string, unknown> = {
-    name,
-    object_story_spec: objectStorySpec,
-    access_token: accessToken,
-  };
+    if (description) {
+      assetFeedSpec.descriptions = [{ text: description }];
+    }
 
-  // Use text_optimizations inside standard_enhancements for multiple text options
-  if (hasMultipleTexts) {
-    console.log(`[FB Creative] Using text_optimizations with ${primaryTexts.length} texts, ${headlines.length} headlines`);
+    if (imageHash) {
+      assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
+      assetFeedSpec.images = [{ hash: imageHash }];
+    } else if (videoId) {
+      assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
+      assetFeedSpec.videos = [{ video_id: videoId }];
+    }
 
+    requestBody = {
+      name,
+      object_story_spec: objectStorySpec,
+      asset_feed_spec: assetFeedSpec,
+      access_token: accessToken,
+    };
+  } else {
+    // STANDARD CREATIVE: Single text with text_optimizations opt-in
+    console.log(`[FB Creative] Using STANDARD CREATIVE with single text, text_optimizations enabled`);
+
+    const message = primaryTexts[0];
+    const headline = headlines[0];
+
+    const objectStorySpec: Record<string, unknown> = {
+      page_id: pageId,
+    };
+
+    if (instagramActorId) {
+      console.log(`[FB Creative] Instagram ID being used: ${instagramActorId}`);
+      objectStorySpec.instagram_user_id = instagramActorId;
+    }
+
+    if (imageHash) {
+      objectStorySpec.link_data = {
+        message,
+        link,
+        name: headline,
+        description,
+        image_hash: imageHash,
+        call_to_action: {
+          type: callToAction,
+          value: { link },
+        },
+      };
+    } else if (videoId) {
+      objectStorySpec.video_data = {
+        video_id: videoId,
+        message,
+        title: headline,
+        link_description: description,
+        image_url: videoThumbnailUrl,
+        call_to_action: {
+          type: callToAction,
+          value: { link },
+        },
+      };
+    }
+
+    requestBody = {
+      name,
+      object_story_spec: objectStorySpec,
+      access_token: accessToken,
+    };
+
+    // Enable text_optimizations for Facebook AI to generate variations
     requestBody.degrees_of_freedom_spec = {
       creative_features_spec: {
-        standard_enhancements: {
+        text_optimizations: {
           enroll_status: "OPT_IN",
-          text_optimizations: {
-            bodies: primaryTexts.map((text) => ({ text })),
-            titles: headlines.map((text) => ({ text })),
-          },
         },
       },
     };
