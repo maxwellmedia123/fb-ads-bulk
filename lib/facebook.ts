@@ -496,12 +496,41 @@ export async function createAdCreative(
     access_token: accessToken,
   };
 
-  // Note: Multiple text variations require Dynamic Creative ad sets
-  // For standard ad sets, only the first text/headline is used
-  // standard_enhancements was deprecated in API v22 (Jan 2025)
+  // Use ACO_AUTOFLOW for multiple text variations (Advantage+ Creative Optimization)
+  // Works on standard ad sets without Dynamic Creative
   if (hasMultipleTexts) {
-    console.log(`[FB Creative] Multiple texts provided (${primaryTexts.length} texts, ${headlines.length} headlines)`);
-    console.log(`[FB Creative] Using first text/headline only - enable Dynamic Creative on ad set for all variations`);
+    console.log(`[FB Creative] Using ACO_AUTOFLOW with ${primaryTexts.length} texts, ${headlines.length} headlines`);
+
+    const assetFeedSpec: Record<string, unknown> = {
+      optimization_type: "ACO_AUTOFLOW",
+      bodies: primaryTexts.map((text) => ({ text })),
+      titles: headlines.map((text) => ({ text })),
+      link_urls: [{ website_url: link }],
+      call_to_action_types: [callToAction],
+    };
+
+    if (imageHash) {
+      assetFeedSpec.images = [{ hash: imageHash }];
+      assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
+    } else if (videoId) {
+      assetFeedSpec.videos = [{ video_id: videoId, thumbnail_url: videoThumbnailUrl }];
+      assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
+    }
+
+    if (description) {
+      assetFeedSpec.descriptions = [{ text: description }];
+    }
+
+    requestBody.asset_feed_spec = assetFeedSpec;
+    requestBody.object_story_spec = {
+      page_id: pageId,
+      ...(instagramActorId && { instagram_user_id: instagramActorId }),
+    };
+    requestBody.degrees_of_freedom_spec = {
+      creative_features_spec: {
+        standard_enhancements: { enroll_status: "OPT_IN" },
+      },
+    };
   }
 
   if (urlTags) {
