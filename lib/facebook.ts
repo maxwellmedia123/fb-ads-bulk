@@ -510,11 +510,13 @@ export async function createAdCreative(
       assetFeedSpec.descriptions = [{ text: description }];
     }
 
+    // Use AUTOMATIC_FORMAT for flexible ad format
+    // Media goes in asset_feed_spec (not in object_story_spec)
+    assetFeedSpec.ad_formats = ["AUTOMATIC_FORMAT"];
+
     if (imageHash) {
-      assetFeedSpec.ad_formats = ["SINGLE_IMAGE"];
       assetFeedSpec.images = [{ hash: imageHash }];
     } else if (videoId) {
-      assetFeedSpec.ad_formats = ["SINGLE_VIDEO"];
       assetFeedSpec.videos = [{ video_id: videoId }];
     }
 
@@ -650,6 +652,105 @@ export async function createAd(params: CreateAdParams): Promise<{ id: string }> 
   }
 
   console.log(`[FB Ad] Success:`, data);
+  return data;
+}
+
+export interface AdSetDetails {
+  id: string;
+  name: string;
+  campaign_id: string;
+  optimization_goal: string;
+  billing_event: string;
+  targeting: Record<string, unknown>;
+  promoted_object?: {
+    pixel_id?: string;
+    custom_event_type?: string;
+    application_id?: string;
+  };
+}
+
+/**
+ * Get ad set details for copying settings when creating a Dynamic Creative ad set
+ */
+export async function getAdSetDetails(
+  adSetId: string,
+  accessToken: string
+): Promise<AdSetDetails> {
+  const response = await fetch(
+    `${FACEBOOK_GRAPH_URL}/${adSetId}?fields=id,name,campaign_id,optimization_goal,billing_event,targeting,promoted_object&access_token=${accessToken}`
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error(`[FB AdSet] Error getting details:`, JSON.stringify(data, null, 2));
+    throw new Error(data.error?.message || "Failed to get ad set details");
+  }
+
+  return data;
+}
+
+export interface CreateDynamicCreativeAdSetParams {
+  adAccountId: string;
+  name: string;
+  campaignId: string;
+  targetingFromAdSet: AdSetDetails;
+  status: "ACTIVE" | "PAUSED";
+  accessToken: string;
+}
+
+/**
+ * Create a Dynamic Creative ad set for multiple text variations
+ *
+ * NOTE: Dynamic Creative ad sets only allow ONE ad per ad set.
+ * This is why we create a new ad set for each ad with multiple text variations.
+ */
+export async function createDynamicCreativeAdSet(
+  params: CreateDynamicCreativeAdSetParams
+): Promise<{ id: string }> {
+  const { adAccountId, name, campaignId, targetingFromAdSet, status, accessToken } = params;
+
+  // Ensure targeting has advantage_audience set
+  const targeting = { ...targetingFromAdSet.targeting };
+  if (!targeting.targeting_automation) {
+    targeting.targeting_automation = { advantage_audience: 1 };
+  }
+
+  const requestBody: Record<string, unknown> = {
+    name,
+    campaign_id: campaignId,
+    billing_event: targetingFromAdSet.billing_event,
+    optimization_goal: targetingFromAdSet.optimization_goal,
+    targeting,
+    is_dynamic_creative: true,  // KEY: Enable Dynamic Creative
+    status,
+    access_token: accessToken,
+  };
+
+  // Copy promoted_object if present (required for OFFSITE_CONVERSIONS)
+  if (targetingFromAdSet.promoted_object) {
+    requestBody.promoted_object = targetingFromAdSet.promoted_object;
+  }
+
+  console.log(`[FB AdSet] Creating Dynamic Creative ad set:`, JSON.stringify(requestBody, null, 2));
+
+  const response = await fetch(
+    `${FACEBOOK_GRAPH_URL}/act_${adAccountId}/adsets`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error(`[FB AdSet] Error creating DC ad set:`, JSON.stringify(data, null, 2));
+    throw new Error(data.error?.error_user_msg || data.error?.message || "Failed to create Dynamic Creative ad set");
+  }
+
+  console.log(`[FB AdSet] Dynamic Creative ad set created:`, data);
   return data;
 }
 

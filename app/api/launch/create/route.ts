@@ -8,7 +8,8 @@ import {
   waitForVideoReady,
   createAdCreative,
   createAd,
-  checkAdSetIsDynamicCreative,
+  getAdSetDetails,
+  createDynamicCreativeAdSet,
 } from "@/lib/facebook";
 import { getPresignedUrl } from "@/lib/r2";
 
@@ -78,10 +79,13 @@ export async function POST(request: NextRequest) {
 
     const results: {
       adSetId: string;
+      originalAdSetId?: string;  // The ad set user selected (when DC ad set was created)
+      createdDcAdSetId?: string | null;  // The DC ad set we created (if any)
       adSetName?: string;
       success: boolean;
       adId?: string;
       error?: string;
+      hasMultipleTexts?: boolean;
     }[] = [];
 
     // Process each ad set
@@ -157,20 +161,37 @@ export async function POST(request: NextRequest) {
         // Use media filename as ad name if no custom name provided
         const adName = customName || mediaAsset.name;
 
-        // Check if ad set supports Dynamic Creative (required for multiple text variations)
+        // Handle multiple text variations by creating a Dynamic Creative ad set
         const hasMultipleTexts = primaryTexts.length > 1 || headlines.length > 1;
-        let useDynamicCreative = false;
+        let targetAdSetId = adSetId;
+        let createdDcAdSetId: string | null = null;
 
         if (hasMultipleTexts) {
-          useDynamicCreative = await checkAdSetIsDynamicCreative(adSetId, account.accessToken);
-          if (useDynamicCreative) {
-            console.log(`[Launch] Ad set ${adSetId} supports Dynamic Creative - using asset_feed_spec for ${primaryTexts.length} texts, ${headlines.length} headlines`);
-          } else {
-            console.log(`[Launch] Ad set ${adSetId} does NOT support Dynamic Creative - using single text with AI optimization`);
-            console.log(`[Launch] Note: To use all ${primaryTexts.length} text variations, create ad set with 'Dynamic Creative' enabled`);
-          }
+          // For multiple text variations, we need to create a new Dynamic Creative ad set
+          // because DC ad sets only allow 1 ad each, and we can't add DC ads to regular ad sets
+          console.log(`[Launch] Multiple texts detected (${primaryTexts.length} texts, ${headlines.length} headlines) - creating DC ad set`);
+
+          // Get the original ad set's details to copy settings
+          const originalAdSetDetails = await getAdSetDetails(adSetId, account.accessToken);
+          console.log(`[Launch] Original ad set campaign: ${originalAdSetDetails.campaign_id}`);
+
+          // Create a new Dynamic Creative ad set in the same campaign
+          const dcAdSet = await createDynamicCreativeAdSet({
+            adAccountId: account.fbAccountId,
+            name: `${adName} - DC`,
+            campaignId: originalAdSetDetails.campaign_id,
+            targetingFromAdSet: originalAdSetDetails,
+            status: launchPaused ? "PAUSED" : "ACTIVE",
+            accessToken: account.accessToken,
+          });
+
+          targetAdSetId = dcAdSet.id;
+          createdDcAdSetId = dcAdSet.id;
+          console.log(`[Launch] Created DC ad set: ${targetAdSetId}`);
         }
 
+        // Create the creative
+        // useDynamicCreative is true when we have multiple texts (we'll use asset_feed_spec)
         const creative = await createAdCreative({
           adAccountId: account.fbAccountId,
           name: `${adName} - Creative`,
@@ -186,14 +207,14 @@ export async function POST(request: NextRequest) {
           urlTags,
           callToAction: callToAction || "LEARN_MORE",
           accessToken: pageAccessToken,
-          useDynamicCreative,
+          useDynamicCreative: hasMultipleTexts,
         });
 
-        // Create ad
+        // Create ad in the target ad set (either original or the new DC ad set)
         const ad = await createAd({
           adAccountId: account.fbAccountId,
           name: adName,
-          adSetId,
+          adSetId: targetAdSetId,
           creativeId: creative.id,
           status: launchPaused ? "PAUSED" : "ACTIVE",
           accessToken: account.accessToken,
@@ -204,7 +225,8 @@ export async function POST(request: NextRequest) {
           data: {
             adAccountId: accountId,
             fbAdId: ad.id,
-            fbAdSetId: adSetId,
+            fbAdSetId: targetAdSetId,  // Use the actual ad set (could be the new DC ad set)
+            fbAdSetName: createdDcAdSetId ? `${adName} - DC` : undefined,
             customName,
             primaryText: primaryTexts[0],
             headline: headlines[0],
@@ -223,9 +245,12 @@ export async function POST(request: NextRequest) {
         });
 
         results.push({
-          adSetId,
+          adSetId: targetAdSetId,
+          originalAdSetId: adSetId,  // The ad set user selected
+          createdDcAdSetId,  // The DC ad set we created (if any)
           success: true,
           adId: ad.id,
+          hasMultipleTexts,
         });
       } catch (error) {
         console.error(`Error creating ad for ad set ${adSetId}:`, error);

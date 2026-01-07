@@ -258,6 +258,81 @@ async function runTests() {
     }
   ));
 
+  // Test 6b: AUTOMATIC_FORMAT - The correct approach for Flexible Ad Format
+  // Key insight: AUTOMATIC_FORMAT doesn't trigger Dynamic Creative mode
+  // All text must be in asset_feed_spec ONLY (not in object_story_spec)
+  results.push(await createCreative(
+    "Test 6b: asset_feed_spec with AUTOMATIC_FORMAT (Flexible Ad)",
+    {
+      name: `Test Creative - AUTOMATIC_FORMAT - ${Date.now()}`,
+      object_story_spec: {
+        page_id: TEST_CONFIG.pageId,
+        instagram_user_id: TEST_CONFIG.instagramUserId,  // Fixed: use instagram_user_id not instagram_actor_id
+        // NO video_data with text here - all text goes in asset_feed_spec
+      },
+      asset_feed_spec: {
+        ad_formats: ["AUTOMATIC_FORMAT"],  // KEY CHANGE!
+        bodies: TEST_CONFIG.primaryTexts.map(text => ({ text })),
+        titles: TEST_CONFIG.headlines.map(text => ({ text })),
+        descriptions: [{ text: TEST_CONFIG.description }],
+        videos: [{ video_id: TEST_CONFIG.videoId }],
+        link_urls: [{ website_url: TEST_CONFIG.link }],
+        call_to_action_types: ["LEARN_MORE"],
+      },
+    }
+  ));
+
+  // Test 6c: AUTOMATIC_FORMAT with ad creation (end-to-end test)
+  console.log("\n" + "=".repeat(60));
+  console.log("TEST: Test 6c: AUTOMATIC_FORMAT ad creation (end-to-end)");
+  console.log("=".repeat(60));
+
+  try {
+    const adResponse = await fetch(
+      `${FACEBOOK_GRAPH_URL}/act_${TEST_CONFIG.adAccountId}/ads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Test Ad - AUTOMATIC_FORMAT - ${Date.now()}`,
+          adset_id: TEST_CONFIG.adSetId,
+          status: "PAUSED",
+          creative: {
+            name: `Creative AUTOMATIC_FORMAT - ${Date.now()}`,
+            object_story_spec: {
+              page_id: TEST_CONFIG.pageId,
+              instagram_user_id: TEST_CONFIG.instagramUserId,  // Fixed: use instagram_user_id
+              // NO text here!
+            },
+            asset_feed_spec: {
+              ad_formats: ["AUTOMATIC_FORMAT"],
+              bodies: TEST_CONFIG.primaryTexts.map(text => ({ text })),
+              titles: TEST_CONFIG.headlines.map(text => ({ text })),
+              descriptions: [{ text: TEST_CONFIG.description }],
+              videos: [{ video_id: TEST_CONFIG.videoId }],
+              link_urls: [{ website_url: TEST_CONFIG.link }],
+              call_to_action_types: ["LEARN_MORE"],
+            },
+          },
+          access_token: TEST_CONFIG.accessToken,
+        }),
+      }
+    );
+    const adData = await adResponse.json();
+    console.log("\nResponse:", JSON.stringify(adData, null, 2));
+    if (adData.id) {
+      console.log(`\n✅ SUCCESS! Ad created with ID: ${adData.id}`);
+      console.log(`\n📋 Check in Ads Manager: https://business.facebook.com/adsmanager/manage/ads?act=${TEST_CONFIG.adAccountId}&selected_ad_ids=${adData.id}`);
+      results.push({ testName: "Test 6c: AUTOMATIC_FORMAT ad creation", success: true, creativeId: adData.id });
+    } else {
+      console.log(`\n❌ FAILED: ${adData.error?.error_user_msg || adData.error?.message}`);
+      results.push({ testName: "Test 6c: AUTOMATIC_FORMAT ad creation", success: false, error: adData.error?.message, errorCode: adData.error?.code });
+    }
+  } catch (err) {
+    console.log("Error:", err);
+    results.push({ testName: "Test 6c: AUTOMATIC_FORMAT ad creation", success: false, error: String(err) });
+  }
+
   // Test 7: Try creating ad directly with inline creative + asset_feed_spec
   console.log("\n" + "=".repeat(60));
   console.log("TEST: Test 7: Direct ad creation with inline asset_feed_spec creative");
@@ -417,6 +492,173 @@ async function runTests() {
   } catch (err) {
     console.log("Error:", err);
     results.push({ testName: "Test 9: Ad with flexible_spec", success: false, error: String(err) });
+  }
+
+  // Test 10: asset_feed_spec with SINGLE_VIDEO + DOF + custom texts (fixed link)
+  console.log("\n" + "=".repeat(60));
+  console.log("TEST: Test 10: SINGLE_VIDEO + DOF + custom texts");
+  console.log("=".repeat(60));
+
+  try {
+    const adResponse = await fetch(
+      `${FACEBOOK_GRAPH_URL}/act_${TEST_CONFIG.adAccountId}/ads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Test Ad - SINGLE_VIDEO DOF - ${Date.now()}`,
+          adset_id: TEST_CONFIG.adSetId,
+          status: "PAUSED",
+          creative: {
+            name: `Creative SINGLE_VIDEO DOF - ${Date.now()}`,
+            object_story_spec: {
+              page_id: TEST_CONFIG.pageId,
+              instagram_user_id: TEST_CONFIG.instagramUserId,
+            },
+            asset_feed_spec: {
+              ad_formats: ["SINGLE_VIDEO"],
+              optimization_type: "DEGREES_OF_FREEDOM",
+              bodies: TEST_CONFIG.primaryTexts.map(text => ({ text })),
+              titles: TEST_CONFIG.headlines.map(text => ({ text })),
+              descriptions: [{ text: TEST_CONFIG.description }],
+              videos: [{ video_id: TEST_CONFIG.videoId }],
+              link_urls: [{ website_url: TEST_CONFIG.link }],
+              call_to_action_types: ["LEARN_MORE"],
+            },
+            degrees_of_freedom_spec: {
+              creative_features_spec: {
+                text_optimizations: { enroll_status: "OPT_IN" },
+              },
+            },
+          },
+          access_token: TEST_CONFIG.accessToken,
+        }),
+      }
+    );
+    const adData = await adResponse.json();
+    console.log("\nResponse:", JSON.stringify(adData, null, 2));
+    if (adData.id) {
+      console.log(`\n✅ SUCCESS! Ad created with ID: ${adData.id}`);
+      results.push({ testName: "Test 10: SINGLE_VIDEO DOF custom texts", success: true, creativeId: adData.id });
+    } else {
+      console.log(`\n❌ FAILED: ${adData.error?.error_user_msg || adData.error?.message}`);
+      results.push({ testName: "Test 10: SINGLE_VIDEO DOF custom texts", success: false, error: adData.error?.message, errorCode: adData.error?.code });
+    }
+  } catch (err) {
+    console.log("Error:", err);
+    results.push({ testName: "Test 10: SINGLE_VIDEO DOF custom texts", success: false, error: String(err) });
+  }
+
+  // Test 11: asset_feed_spec with SINGLE_VIDEO + text_generation (adds AI variations to our texts)
+  console.log("\n" + "=".repeat(60));
+  console.log("TEST: Test 11: SINGLE_VIDEO + text_generation + custom texts");
+  console.log("=".repeat(60));
+
+  try {
+    const adResponse = await fetch(
+      `${FACEBOOK_GRAPH_URL}/act_${TEST_CONFIG.adAccountId}/ads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Test Ad - SINGLE_VIDEO text_gen - ${Date.now()}`,
+          adset_id: TEST_CONFIG.adSetId,
+          status: "PAUSED",
+          creative: {
+            name: `Creative SINGLE_VIDEO text_gen - ${Date.now()}`,
+            object_story_spec: {
+              page_id: TEST_CONFIG.pageId,
+              instagram_user_id: TEST_CONFIG.instagramUserId,
+            },
+            asset_feed_spec: {
+              ad_formats: ["SINGLE_VIDEO"],
+              bodies: TEST_CONFIG.primaryTexts.map(text => ({ text })),
+              titles: TEST_CONFIG.headlines.map(text => ({ text })),
+              descriptions: [{ text: TEST_CONFIG.description }],
+              videos: [{ video_id: TEST_CONFIG.videoId }],
+              link_urls: [{ website_url: TEST_CONFIG.link }],
+              call_to_action_types: ["LEARN_MORE"],
+            },
+            degrees_of_freedom_spec: {
+              creative_features_spec: {
+                text_optimizations: { enroll_status: "OPT_IN" },
+                text_generation: { enroll_status: "OPT_IN" },
+              },
+            },
+          },
+          access_token: TEST_CONFIG.accessToken,
+        }),
+      }
+    );
+    const adData = await adResponse.json();
+    console.log("\nResponse:", JSON.stringify(adData, null, 2));
+    if (adData.id) {
+      console.log(`\n✅ SUCCESS! Ad created with ID: ${adData.id}`);
+      results.push({ testName: "Test 11: SINGLE_VIDEO text_gen custom", success: true, creativeId: adData.id });
+    } else {
+      console.log(`\n❌ FAILED: ${adData.error?.error_user_msg || adData.error?.message}`);
+      results.push({ testName: "Test 11: SINGLE_VIDEO text_gen custom", success: false, error: adData.error?.message, errorCode: adData.error?.code });
+    }
+  } catch (err) {
+    console.log("Error:", err);
+    results.push({ testName: "Test 11: SINGLE_VIDEO text_gen custom", success: false, error: String(err) });
+  }
+
+  // Test 12: Just text_generation without asset_feed_spec (let FB handle everything)
+  console.log("\n" + "=".repeat(60));
+  console.log("TEST: Test 12: Simple text_generation only (AI generates from our text)");
+  console.log("=".repeat(60));
+
+  try {
+    const adResponse = await fetch(
+      `${FACEBOOK_GRAPH_URL}/act_${TEST_CONFIG.adAccountId}/ads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Test Ad - text_gen only - ${Date.now()}`,
+          adset_id: TEST_CONFIG.adSetId,
+          status: "PAUSED",
+          creative: {
+            name: `Creative text_gen only - ${Date.now()}`,
+            object_story_spec: {
+              page_id: TEST_CONFIG.pageId,
+              instagram_user_id: TEST_CONFIG.instagramUserId,
+              video_data: {
+                video_id: TEST_CONFIG.videoId,
+                message: TEST_CONFIG.primaryTexts[0],
+                title: TEST_CONFIG.headlines[0],
+                link_description: TEST_CONFIG.description,
+                image_url: TEST_CONFIG.thumbnailUrl,
+                call_to_action: {
+                  type: "LEARN_MORE",
+                  value: { link: TEST_CONFIG.link },
+                },
+              },
+            },
+            degrees_of_freedom_spec: {
+              creative_features_spec: {
+                text_optimizations: { enroll_status: "OPT_IN" },
+                text_generation: { enroll_status: "OPT_IN" },
+              },
+            },
+          },
+          access_token: TEST_CONFIG.accessToken,
+        }),
+      }
+    );
+    const adData = await adResponse.json();
+    console.log("\nResponse:", JSON.stringify(adData, null, 2));
+    if (adData.id) {
+      console.log(`\n✅ SUCCESS! Ad created with ID: ${adData.id}`);
+      results.push({ testName: "Test 12: text_gen only", success: true, creativeId: adData.id });
+    } else {
+      console.log(`\n❌ FAILED: ${adData.error?.error_user_msg || adData.error?.message}`);
+      results.push({ testName: "Test 12: text_gen only", success: false, error: adData.error?.message, errorCode: adData.error?.code });
+    }
+  } catch (err) {
+    console.log("Error:", err);
+    results.push({ testName: "Test 12: text_gen only", success: false, error: String(err) });
   }
 
   // Print summary
