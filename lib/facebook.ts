@@ -667,6 +667,10 @@ export interface AdSetDetails {
     custom_event_type?: string;
     application_id?: string;
   };
+  bid_strategy?: string;
+  bid_amount?: number;
+  bid_constraints?: Record<string, unknown>;
+  pacing_type?: string[];
 }
 
 /**
@@ -677,7 +681,7 @@ export async function getAdSetDetails(
   accessToken: string
 ): Promise<AdSetDetails> {
   const response = await fetch(
-    `${FACEBOOK_GRAPH_URL}/${adSetId}?fields=id,name,campaign_id,optimization_goal,billing_event,targeting,promoted_object&access_token=${accessToken}`
+    `${FACEBOOK_GRAPH_URL}/${adSetId}?fields=id,name,campaign_id,optimization_goal,billing_event,targeting,promoted_object,bid_strategy,bid_amount,bid_constraints,pacing_type&access_token=${accessToken}`
   );
 
   const data = await response.json();
@@ -730,6 +734,20 @@ export async function createDynamicCreativeAdSet(
   // Copy promoted_object if present (required for OFFSITE_CONVERSIONS)
   if (targetingFromAdSet.promoted_object) {
     requestBody.promoted_object = targetingFromAdSet.promoted_object;
+  }
+
+  // Copy bid strategy settings (required for bid cap, ROAS goal, etc.)
+  if (targetingFromAdSet.bid_strategy) {
+    requestBody.bid_strategy = targetingFromAdSet.bid_strategy;
+  }
+  if (targetingFromAdSet.bid_amount) {
+    requestBody.bid_amount = targetingFromAdSet.bid_amount;
+  }
+  if (targetingFromAdSet.bid_constraints) {
+    requestBody.bid_constraints = targetingFromAdSet.bid_constraints;
+  }
+  if (targetingFromAdSet.pacing_type) {
+    requestBody.pacing_type = targetingFromAdSet.pacing_type;
   }
 
   console.log(`[FB AdSet] Creating Dynamic Creative ad set:`, JSON.stringify(requestBody, null, 2));
